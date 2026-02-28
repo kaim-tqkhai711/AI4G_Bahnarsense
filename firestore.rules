@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // MODULE 1: USERS & PROFILES
+    // ==========================================
+    match /profiles/{userId} {
+      // Chỉ Client đang đăng nhập mới xem được thông tin của CHÍNH MÌNH (và người khác nếu match PvP)
+      allow read: if request.auth != null;
+      // KIÊN QUYẾT CHẶN: Client không thể tự gửi lệnh thay đổi Level, XP, Sao vàng
+      // Mọi thay đổi đều được thi hành từ Backend Admin SDK (Cloud Functions / Node.js Server)
+      allow write, delete: if false; 
+    }
+
+    // ==========================================
+    // MODULE 2: LESSONS & PROGRESS (CORE LOOP)
+    // ==========================================
+    match /lessons/{lessonId} {
+      // User đọc dữ liệu bài học để load App
+      allow read: if request.auth != null;
+      // Giáo viên / CMS đẩy dữ liệu qua Backend (App Script) thay vì Client
+      allow write, delete: if false;
+    }
+
+    match /user_progress/{docId} {
+      // Chỉ đọc tiến trình của bản thân (docId có format `userId_lessonId`)
+      allow read: if request.auth != null && docId.split('_')[0] == request.auth.uid;
+      // Chặn cheat điểm. Thắng bài mới dùng Admin SDK cập nhật
+      allow write, delete: if false; 
+    }
+
+    // ==========================================
+    // MODULE 3: REVIEW / SPACED REPETITION
+    // ==========================================
+    // Sử dụng wildcard collection
+    match /{collection}/{itemId} {
+      allow read: if request.auth != null && collection == 'review_cards_' + request.auth.uid;
+      allow write, delete: if false; // Admin SDK handles logError
+    }
+
+    // ==========================================
+    // MODULE 4: SHOP & INVENTORY
+    // ==========================================
+    match /shop_items/{itemId} {
+      allow read: if request.auth != null; // Hiển thị sản phẩm trong Cửa Hàng
+      allow write, delete: if false;
+    }
+
+    match /inventory/{docId} {
+      allow read: if request.auth != null && docId.split('_')[0] == request.auth.uid;
+      allow write, delete: if false;
+    }
+
+    match /transaction_log/{docId} {
+      // Chỉ Server Backend có quyền Audit Log mua hàng 
+      allow read, write: if false;
+    }
+  }
+}
