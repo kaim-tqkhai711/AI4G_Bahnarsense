@@ -81,4 +81,3 @@ npm run dev
 2. Kiểm thử flow Login SSO và Màn hình Cửa hàng (Shop).
 3. (Task Khởi động): Thay thế logo mặc định trong `WelcomeScreen.tsx` hoặc bổ sung thêm một API dummy vào nhóm Cửa hàng Backend.
 
-Chúc bạn code vui vẻ! 🚀

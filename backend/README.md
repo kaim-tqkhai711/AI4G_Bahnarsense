@@ -34,4 +34,3 @@ File `.env` nằm ở thư mục root cài đặt `FIREBASE_SERVICE_ACCOUNT_KEY`
     - API: `GET /community/matchmaking`.
     - WebSockets Events: `receive_challenge`, `match_start`, `opponent_progress`, v.v...
 
-*Chúc bạn trải nghiệm vui vẻ!*
