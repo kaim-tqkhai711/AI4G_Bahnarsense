@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Check, Loader2 } from 'lucide-react';
-import { MOCK_LESSONS } from '../../data/mockData';
+import { Lesson } from '../../types';
 import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -44,29 +44,35 @@ function DailyGoalWidget() {
 export function LearnRoom() {
     const navigate = useNavigate();
     const { user } = useUserStore();
-    const [lessons, setLessons] = useState<typeof MOCK_LESSONS>([]);
+    const [lessons, setLessons] = useState<Lesson[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const loadLessons = async () => {
             setIsLoading(true);
             try {
-                // Fetch bài học từ hệ thống CMS Google Sheets.
+                const token = useUserStore.getState().token;
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+                // Fetch bài học từ hệ thống Backend.
                 // Thử tải bằng fetchWithMonitor. Nếu sau 3 giây không có phản hồi, lấy từ Cache hoặc fallback.
-                const fetchedLessons = await fetchWithMonitor<typeof MOCK_LESSONS>(
-                    'http://localhost:8000/api/lessons', // Mock endpoint Google Sheets CMS
-                    {},
+                const response = await fetchWithMonitor<{ success: boolean, data: Lesson[] }>(
+                    `${API_URL}/api/v1/lessons`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    },
                     'ziczac_lessons_cache',
                     3000
                 );
 
-                // Giả map dữ liệu 
-                setLessons(fetchedLessons || MOCK_LESSONS);
+                setLessons(response?.data || []);
             } catch (err) {
-                // Rớt mạng hoặc Google Sheet bị ngắt -> Dùng MockData hiển thị tạm để không hỏng trải nghiệm người dùng
+                // Rớt mạng hoặc Server bị ngắt -> Dùng MockData hiển thị tạm để không hỏng trải nghiệm người dùng
                 console.warn("[LearnRoom] Đang sử dụng Offline Fallback Data cho Lessons.", err);
-                setLessons(MOCK_LESSONS);
-                trackEvent('google_sheet_cms_fail', { fallback: true });
+                setLessons([]);
+                trackEvent('backend_api_fail', { fallback: true });
             } finally {
                 setIsLoading(false);
             }

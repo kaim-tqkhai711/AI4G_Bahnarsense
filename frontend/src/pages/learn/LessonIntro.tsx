@@ -1,14 +1,59 @@
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
-import { MOCK_LESSONS } from '../../data/mockData';
-import { ArrowLeft, ArrowRight, Clock, BookOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight, Clock, BookOpen, Loader2 } from 'lucide-react';
+import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
+import { useUserStore } from '../../store/useUserStore';
+import { Lesson } from '../../types';
 
 export function LessonIntro() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const [lesson, setLesson] = useState<Lesson | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Tìm bài học tương ứng (Sử dụng Mock data hoặc fetch data thực sau này)
-    const lesson = MOCK_LESSONS.find(l => l.id === id);
+    useEffect(() => {
+        const loadLesson = async () => {
+            setIsLoading(true);
+            try {
+                const token = useUserStore.getState().token;
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+                const response = await fetchWithMonitor<{ success: boolean, data: Lesson[] }>(
+                    `${API_URL}/api/v1/lessons`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    },
+                    'ziczac_lessons_cache',
+                    3000
+                );
+
+                const found = (response?.data || []).find((l: Lesson) => l.id === id);
+                setLesson(found || null);
+            } catch (err) {
+                console.warn("[LessonIntro] Lỗi API:", err);
+                setLesson(null);
+                trackEvent('backend_api_fail_intro', { fallback: false, lessonId: id });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (id) {
+            loadLesson();
+        }
+    }, [id]);
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen">
+                <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
+                <p className="text-stone-500 font-bold">Đang tải thông tin bài học...</p>
+            </div>
+        );
+    }
 
     if (!lesson) {
         return (

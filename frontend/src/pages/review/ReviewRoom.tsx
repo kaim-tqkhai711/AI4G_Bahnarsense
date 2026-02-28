@@ -1,32 +1,83 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MOCK_MISTAKES } from '../../data/mockData';
-import { RefreshCw, CheckCircle2, XCircle, BrainCircuit } from 'lucide-react';
+
+import { Mistake } from '../../types';
+import { RefreshCw, CheckCircle2, XCircle, BrainCircuit, Loader2 } from 'lucide-react';
 import { triggerConfetti } from '../../lib/confetti';
+import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
+import { useUserStore } from '../../store/useUserStore';
 
 export function ReviewRoom() {
-    const [mistakes, setMistakes] = useState(MOCK_MISTAKES);
+    const [mistakes, setMistakes] = useState<Mistake[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const loadTasks = async () => {
+            setIsLoading(true);
+            try {
+                const token = useUserStore.getState().token;
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+                const response = await fetchWithMonitor<{ success: boolean, data: { tasks: Mistake[] } }>(
+                    `${API_URL}/api/v1/review/daily_tasks`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    },
+                    'ziczac_review_cache',
+                    3000
+                );
+
+                const tasks = response?.data?.tasks;
+                if (tasks && tasks.length > 0) {
+                    setMistakes(tasks);
+                } else {
+                    setMistakes([]);
+                }
+            } catch (err) {
+                console.warn("[ReviewRoom] Lỗi API. Không thể tải review tasks:", err);
+                setMistakes([]);
+                trackEvent('backend_api_fail_review', { fallback: false });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadTasks();
+    }, []);
 
     const activeCard = mistakes[currentIndex];
 
+    // ... handleNext logic ...
     const handleNext = (isRemembered: boolean) => {
         setIsFlipped(false);
         setTimeout(() => {
+            const nextMistakes = [...mistakes];
             if (isRemembered) {
-                const newMistakes = mistakes.filter((_, idx) => idx !== currentIndex);
-                setMistakes(newMistakes);
-                if (newMistakes.length === 0) {
+                nextMistakes.splice(currentIndex, 1);
+                setMistakes(nextMistakes);
+                if (nextMistakes.length === 0) {
                     triggerConfetti();
                 } else {
-                    setCurrentIndex(Math.min(currentIndex, newMistakes.length - 1));
+                    setCurrentIndex(Math.min(currentIndex, nextMistakes.length - 1));
                 }
             } else {
                 setCurrentIndex((prev) => (prev + 1) % mistakes.length);
             }
-        }, 300); // Wait for card flip animation to reset
+        }, 300);
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-6">
+                <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+                <p className="text-stone-500 font-bold">Đang tải thẻ ôn tập...</p>
+            </div>
+        );
+    }
 
     if (!activeCard) {
         return (

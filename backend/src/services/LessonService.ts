@@ -31,8 +31,9 @@ export class LessonService {
 
             return {
                 id: lesson.id,
-                title: lesson.title,
-                type: lesson.type,
+                topic: lesson.title,
+                difficulty: lesson.order,
+                type: lesson.type === 'vocabulary' ? 'vocab' : lesson.type,
                 status: status
             };
         });

@@ -3,11 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sword, Loader2, Trophy, User } from 'lucide-react';
 import { socket } from '../../lib/socket';
 import { triggerWinBurst } from '../../lib/confetti';
-import { MOCK_USER } from '../../data/mockData';
+import { useUserStore } from '../../store/useUserStore';
 
 type MatchState = 'idle' | 'searching' | 'found' | 'countdown' | 'playing' | 'finished';
 
 export function CommunityRoom() {
+    const { user } = useUserStore();
+    const currentUserId = user?.id || 'guest';
+    const currentUserName = user?.name || 'Khách';
+    const isAdvancedLevel = (user?.streak || 0) > 0;
+
     const [matchState, setMatchState] = useState<MatchState>('idle');
     const [roomId, setRoomId] = useState<string | null>(null);
     const [countdown, setCountdown] = useState(3);
@@ -22,7 +27,7 @@ export function CommunityRoom() {
     useEffect(() => {
         // 1. Kết nối và Authenticate
         socket.connect();
-        socket.emit('authenticate', { user_id: MOCK_USER.id });
+        socket.emit('authenticate', { user_id: currentUserId });
 
         // 2. Lắng nghe các event từ Backend
         socket.on('receive_challenge', (data) => {
@@ -45,7 +50,7 @@ export function CommunityRoom() {
         socket.on('match_end', (data) => {
             setMatchState('finished');
             setWinner(data.winner_id);
-            if (data.winner_id === MOCK_USER.id) {
+            if (data.winner_id === currentUserId) {
                 triggerWinBurst();
             }
         });
@@ -57,7 +62,7 @@ export function CommunityRoom() {
             socket.off('match_end');
             socket.disconnect();
         };
-    }, []);
+    }, [currentUserId]);
 
     const startCountdown = () => {
         setCountdown(3);
@@ -85,7 +90,7 @@ export function CommunityRoom() {
 
     const handleAcceptMatch = () => {
         // Gửi accept_challenge tới Backend (A & B)
-        socket.emit('accept_challenge', { user_a_id: MOCK_USER.id, user_b_id: opponentId });
+        socket.emit('accept_challenge', { user_a_id: currentUserId, user_b_id: opponentId });
     };
 
     const handleMockSubmitAnswer = (isCorrect: boolean) => {
@@ -94,11 +99,11 @@ export function CommunityRoom() {
         if (isCorrect) {
             const newScore = myScore + 1;
             setMyScore(newScore);
-            socket.emit('submit_answer', { room_id: roomId, user_id: MOCK_USER.id, is_correct: true, timestamp: Date.now() });
+            socket.emit('submit_answer', { room_id: roomId, user_id: currentUserId, is_correct: true, timestamp: Date.now() });
 
             if (newScore >= TOTAL_QUESTIONS) {
                 // Send finish to backend
-                socket.emit('match_result', { room_id: roomId, user_id: MOCK_USER.id, total_points: newScore, timestamp: Date.now() });
+                socket.emit('match_result', { room_id: roomId, user_id: currentUserId, total_points: newScore, timestamp: Date.now() });
             }
         }
     };
@@ -166,7 +171,7 @@ export function CommunityRoom() {
                     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center h-64 text-center">
                         <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4" />
                         <h3 className="text-xl font-bold text-stone-900">Đang dò tìm...</h3>
-                        <p className="text-stone-500 mt-2">Tìm kiếm đối thủ Level {MOCK_USER.streak > 0 ? "A1" : "A2"}</p>
+                        <p className="text-stone-500 mt-2">Tìm kiếm đối thủ Level {isAdvancedLevel ? "A1" : "A2"}</p>
                     </motion.div>
                 )}
 
@@ -176,7 +181,7 @@ export function CommunityRoom() {
                         <div className="flex items-center gap-6 mb-12">
                             <div className="flex flex-col items-center text-center">
                                 <div className="w-20 h-20 bg-stone-100 border-4 border-stone-900 rounded-full mb-3 flex items-center justify-center text-stone-400"><User className="w-8 h-8" /></div>
-                                <span className="font-bold text-stone-900">{MOCK_USER.name}</span>
+                                <span className="font-bold text-stone-900">{currentUserName}</span>
                             </div>
                             <div className="text-orange-500 font-black text-3xl italic">VS</div>
                             <div className="flex flex-col items-center text-center">
@@ -203,7 +208,7 @@ export function CommunityRoom() {
                             {/* My Progress */}
                             <div>
                                 <div className="flex justify-between font-bold text-sm mb-2 text-stone-900">
-                                    <span>{MOCK_USER.name} (Bạn)</span>
+                                    <span>{currentUserName} (Bạn)</span>
                                     <span>{myScore} / {TOTAL_QUESTIONS}</span>
                                 </div>
                                 <div className="h-4 bg-stone-200 rounded-full overflow-hidden">
@@ -240,10 +245,10 @@ export function CommunityRoom() {
                             <Trophy className="w-12 h-12" />
                         </div>
                         <h2 className="text-3xl font-black text-stone-900 mb-2">
-                            {winner === MOCK_USER.id ? "CHIẾN THẮNG!" : "THẤT BẠI!"}
+                            {winner === currentUserId ? "CHIẾN THẮNG!" : "THẤT BẠI!"}
                         </h2>
                         <p className="text-stone-500 font-medium mb-8">
-                            {winner === MOCK_USER.id ? "+50 Sao Vàng" : "Chúc bạn may mắn lần sau"}
+                            {winner === currentUserId ? "+50 Sao Vàng" : "Chúc bạn may mắn lần sau"}
                         </p>
                         <button onClick={() => setMatchState('idle')} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold text-lg">
                             Trở về Phòng Cộng đồng
