@@ -1,40 +1,43 @@
 import { LessonRepository } from '@/repositories/LessonRepository';
 
-// MOCK: Dữ liệu này thực tế sẽ được fetch từ Google Sheets API theo PLAN:
-const CMS_MOCK_LESSONS = [
-    { id: 'l1', title: 'Từ vựng Cơ bản', order: 1, type: 'vocabulary', correctAnswer: 'A' },
-    { id: 'l2', title: 'Ngữ pháp nhập môn', order: 2, type: 'grammar', correctAnswer: 'B' },
-    { id: 'l3', title: 'Phát âm cơ bản', order: 3, type: 'pronunciation', correctAnswer: 'C' },
+// Fallback when no lessons in DB (e.g. before seed)
+const FALLBACK_LESSONS = [
+    { lesson_id: 'l1', title: 'Từ vựng Cơ bản', order_index: 1, type: 'vocabulary', correct_answer: 'A' },
+    { lesson_id: 'l2', title: 'Ngữ pháp nhập môn', order_index: 2, type: 'grammar', correct_answer: 'B' },
+    { lesson_id: 'l3', title: 'Phát âm cơ bản', order_index: 3, type: 'pronunciation', correct_answer: 'C' },
 ];
 
 export class LessonService {
     constructor(private readonly lessonRepository: LessonRepository) { }
 
     /**
-     * GET /lessons
+     * GET /lessons — from Supabase when available, else fallback.
      */
     async getLessons(uid: string) {
         const progresses = await this.lessonRepository.getUserProgress(uid);
         const completedLessonIds = progresses.map(p => p.lesson_id);
 
-        // Merge Mock JSON with Firestore Progress
-        // Logic: Node tiếp theo chỉ active khi node trước hoàn thành 100%
-        const processedLessons = CMS_MOCK_LESSONS.sort((a, b) => a.order - b.order).map((lesson, index) => {
-            const isDone = completedLessonIds.includes(lesson.id);
-            let status = 'locked';
+        let lessons: { lesson_id: string; title: string; order_index?: number; type?: string }[];
+        try {
+            lessons = await this.lessonRepository.getLessonsFromDb();
+        } catch {
+            lessons = FALLBACK_LESSONS;
+        }
+        if (!lessons.length) lessons = FALLBACK_LESSONS;
 
-            if (isDone) {
-                status = 'done';
-            } else if (index === 0 || completedLessonIds.includes(CMS_MOCK_LESSONS[index - 1].id)) {
-                status = 'active';
-            }
+        const sorted = [...lessons].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+        const processedLessons = sorted.map((lesson, index) => {
+            const isDone = completedLessonIds.includes(lesson.lesson_id);
+            let status: 'locked' | 'active' | 'done' = 'locked';
+            if (isDone) status = 'done';
+            else if (index === 0 || completedLessonIds.includes(sorted[index - 1].lesson_id)) status = 'active';
 
             return {
-                id: lesson.id,
+                id: lesson.lesson_id,
                 topic: lesson.title,
-                difficulty: lesson.order,
-                type: lesson.type === 'vocabulary' ? 'vocab' : lesson.type,
-                status: status
+                difficulty: lesson.order_index ?? index + 1,
+                type: lesson.type === 'vocabulary' ? 'vocab' : (lesson.type ?? 'vocabulary'),
+                status,
             };
         });
 
@@ -44,15 +47,15 @@ export class LessonService {
     /**
      * POST /lessons/submit
      */
-    async submitAnswer(uid: string, lessonId: string, questionId: string, userAnswer: any, correctCount: number = 10, totalQuestions: number = 10) {
-        // 1. Phân giải câu hỏi thông qua CMS JSON/Google Sheets
-        const lesson = CMS_MOCK_LESSONS.find(l => l.id === lessonId);
+    async submitAnswer(uid: string, lessonId: string, questionId: string, userAnswer: unknown, correctCount: number = 10, totalQuestions: number = 10) {
+        const lesson = await this.lessonRepository.getLessonById(lessonId)
+            ?? FALLBACK_LESSONS.find(l => l.lesson_id === lessonId);
         if (!lesson) {
             throw new Error('Lesson not found');
         }
 
-        // 2. Chấm điểm (Rule-based đơn giản)
-        if (userAnswer !== lesson.correctAnswer) {
+        const correctAnswer = (lesson as { correct_answer?: string }).correct_answer ?? (lesson as { correctAnswer?: string }).correctAnswer;
+        if (userAnswer !== correctAnswer) {
             return {
                 correct: false,
                 hint: 'Sai rồi! Hãy thử suy nghĩ lại về ngữ cảnh của từ này nhé.',

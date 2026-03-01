@@ -54,9 +54,13 @@ export function LearnRoom() {
                 const token = useUserStore.getState().token;
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-                // Fetch bài học từ hệ thống Backend.
-                // Thử tải bằng fetchWithMonitor. Nếu sau 3 giây không có phản hồi, lấy từ Cache hoặc fallback.
-                const response = await fetchWithMonitor<{ success: boolean, data: Lesson[] }>(
+                if (!token) {
+                    console.warn('[LearnRoom] Chưa đăng nhập – cần đăng nhập để xem bài học từ server.');
+                    setLessons([]);
+                    return;
+                }
+
+                const response = await fetchWithMonitor<{ success: boolean; data: Lesson[] } | Lesson[]>(
                     `${API_URL}/api/v1/lessons`,
                     {
                         headers: {
@@ -67,10 +71,11 @@ export function LearnRoom() {
                     3000
                 );
 
-                setLessons(response?.data || []);
+                // API returns { data: Lesson[] }; cache fallback may return array directly
+                const list = Array.isArray(response) ? response : (response?.data ?? []);
+                setLessons(list);
             } catch (err) {
-                // Rớt mạng hoặc Server bị ngắt -> Dùng MockData hiển thị tạm để không hỏng trải nghiệm người dùng
-                console.warn("[LearnRoom] Đang sử dụng Offline Fallback Data cho Lessons.", err);
+                console.warn('[LearnRoom] Đang sử dụng Offline Fallback Data cho Lessons.', err);
                 setLessons([]);
                 trackEvent('backend_api_fail', { fallback: true });
             } finally {

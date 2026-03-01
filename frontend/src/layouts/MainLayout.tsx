@@ -3,6 +3,7 @@ import { BookOpen, Repeat, Users, BookMarked, MessageCircle, LogOut, ShoppingCar
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useUserStore } from '../store/useUserStore';
+import { supabase } from '../lib/supabase';
 import { MascotKorai } from '../components/MascotKorai';
 import { SmartReviewReminder } from '../components/SmartReviewReminder';
 
@@ -24,9 +25,10 @@ function LeftSidebar() {
     const streak = user?.streak || 0;
     const sao_vang = user?.sao_vang || 0;
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await supabase.auth.signOut().catch(() => {});
         localStorage.removeItem('isGuest');
-        logout(); // Gọi method auth state
+        logout();
         window.location.href = '/welcome';
     };
 
@@ -37,6 +39,18 @@ function LeftSidebar() {
             <div className="relative w-full flex justify-center mb-8 h-32">
                 <MascotKorai equippedItems={equippedItems} className="absolute -top-4 md:top-0" />
             </div>
+
+            {/* Current user – who is using the app */}
+            {user && (
+                <div className="w-full px-2 md:px-3 mb-3 md:mb-4 text-center">
+                    <p className="text-stone-600 text-xs md:text-sm font-semibold truncate" title={user.name || 'Học viên'}>
+                        {user.name || 'Học viên'}
+                    </p>
+                    {user.isGuest && (
+                        <span className="text-[10px] text-amber-600 font-medium">Khách</span>
+                    )}
+                </div>
+            )}
 
             {/* User Stats (Minimalist) */}
             <div className="hidden md:flex flex-col items-center gap-2 mb-10">

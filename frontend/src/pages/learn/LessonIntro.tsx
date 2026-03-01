@@ -19,7 +19,12 @@ export function LessonIntro() {
                 const token = useUserStore.getState().token;
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-                const response = await fetchWithMonitor<{ success: boolean, data: Lesson[] }>(
+                if (!token) {
+                    setLesson(null);
+                    return;
+                }
+
+                const response = await fetchWithMonitor<{ success: boolean; data: Lesson[] } | Lesson[]>(
                     `${API_URL}/api/v1/lessons`,
                     {
                         headers: {
@@ -30,7 +35,8 @@ export function LessonIntro() {
                     3000
                 );
 
-                const found = (response?.data || []).find((l: Lesson) => l.id === id);
+                const list = Array.isArray(response) ? response : (response?.data ?? []);
+                const found = list.find((l: Lesson) => l.id === id);
                 setLesson(found || null);
             } catch (err) {
                 console.warn("[LessonIntro] Lỗi API:", err);

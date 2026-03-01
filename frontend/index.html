@@ -8,6 +8,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // If Supabase OAuth redirected here with tokens in URL, go to callback before React runs (keeps hash)
+      (function() {
+        var h = window.location.hash || '';
+        var q = window.location.search || '';
+        if ((h.indexOf('access_token') !== -1 || h.indexOf('refresh_token') !== -1 || q.indexOf('code=') !== -1) && window.location.pathname !== '/auth/callback') {
+          window.location.replace('/auth/callback' + h + q);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

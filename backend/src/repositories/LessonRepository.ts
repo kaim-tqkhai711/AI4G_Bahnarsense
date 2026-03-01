@@ -1,44 +1,89 @@
-import { db } from '@/utils/firebaseAdmin';
+import { supabase } from '@/utils/supabaseAdmin';
+
+export type LessonRow = {
+    lesson_id: string;
+    title: string;
+    description?: string;
+    content?: unknown;
+    order_index?: number;
+    type?: string;
+    correct_answer?: string;
+};
 
 export class LessonRepository {
-    /**
-     * Truy xuất toàn bộ lịch sử học tập của user
-     */
-    async getUserProgress(uid: string) {
-        const progressSnapshot = await db.collection('user_progress')
-            .where('user_id', '==', uid)
-            .get();
-
-        return progressSnapshot.docs.map(doc => doc.data());
+    /** All lessons from DB, ordered (for learning path). */
+    async getLessonsFromDb(): Promise<LessonRow[]> {
+        const { data, error } = await supabase
+            .from('lessons')
+            .select('lesson_id, title, description, content, order_index, type, correct_answer')
+            .order('order_index', { ascending: true, nullsFirst: false });
+        if (error) throw error;
+        return (data || []) as LessonRow[];
     }
 
-    /**
-     * Lưu hoặc cập nhật tiến độ sau khi user submit kết quả
-     */
+    /** Single lesson by id (for submit answer). */
+    async getLessonById(lessonId: string): Promise<LessonRow | null> {
+        const { data, error } = await supabase
+            .from('lessons')
+            .select('lesson_id, title, description, content, order_index, type, correct_answer')
+            .eq('lesson_id', lessonId)
+            .single();
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw error;
+        }
+        return data as LessonRow;
+    }
+
+    async getUserProgress(uid: string) {
+        const { data, error } = await supabase
+            .from('user_progress')
+            .select('*')
+            .eq('user_id', uid);
+
+        if (error) throw error;
+        return (data || []).map((row: Record<string, unknown>) => ({
+            user_id: row.user_id,
+            lesson_id: row.lesson_id,
+            status: row.status,
+            completed_at: row.completed_at,
+        }));
+    }
+
     async appendLessonSuccess(uid: string, lessonId: string, earnedSaoVang: number, earnedXp: number) {
-        const progressRef = db.collection('user_progress').doc(`${uid}_${lessonId}`);
-        const profileRef = db.collection('profiles').doc(uid);
+        const progressId = `${uid}_${lessonId}`;
+        const { error: progressError } = await supabase.from('user_progress').upsert(
+            {
+                id: progressId,
+                user_id: uid,
+                lesson_id: lessonId,
+                status: 'done',
+                completed_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+        );
+        if (progressError) throw progressError;
 
-        const admin = await import('firebase-admin');
+        const { data: profile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('sao_vang, xp, streak')
+            .eq('id', uid)
+            .single();
+        if (fetchError || !profile) throw fetchError || new Error('Profile not found');
 
-        // Giao dịch Batch Write đảm bảo tăng XP, Vàng và gạch thẻ Progress thành công cùng lúc
-        const batch = db.batch();
+        const currentSao = (profile.sao_vang ?? 0) as number;
+        const currentXp = (profile.xp ?? 0) as number;
+        const currentStreak = (profile.streak ?? 0) as number;
 
-        batch.set(progressRef, {
-            user_id: uid,
-            lesson_id: lessonId,
-            status: 'done',
-            completed_at: new Date().toISOString()
-        }, { merge: true });
-
-        batch.update(profileRef, {
-            sao_vang: admin.firestore.FieldValue.increment(earnedSaoVang),
-            xp: admin.firestore.FieldValue.increment(earnedXp),
-            // Giả lập tặng streak: Mọi lần pass logic streak có thể check Date. (Giản lược do MVP)
-            streak: admin.firestore.FieldValue.increment(1)
-        });
-
-        await batch.commit();
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+                sao_vang: currentSao + earnedSaoVang,
+                xp: currentXp + earnedXp,
+                streak: currentStreak + 1,
+            })
+            .eq('id', uid);
+        if (updateError) throw updateError;
 
         return true;
     }

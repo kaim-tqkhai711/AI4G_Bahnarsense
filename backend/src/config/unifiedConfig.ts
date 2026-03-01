@@ -14,6 +14,11 @@ const configSchema = z.object({
     db: z.object({
         databaseUrl: z.string().optional(),
     }),
+    supabase: z.object({
+        url: z.string().min(1, 'SUPABASE_URL is required'),
+        serviceRoleKey: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
+        jwtSecret: z.string().min(1, 'SUPABASE_JWT_SECRET is required for auth'),
+    }),
     auth: z.object({
         jwtSecret: z.string().default('super-secret-dev-key'),
     }),
@@ -31,6 +36,11 @@ const parsedConfig = configSchema.safeParse({
     },
     db: {
         databaseUrl: process.env.DATABASE_URL,
+    },
+    supabase: {
+        url: process.env.SUPABASE_URL,
+        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        jwtSecret: process.env.SUPABASE_JWT_SECRET,
     },
     auth: {
         jwtSecret: process.env.JWT_SECRET,

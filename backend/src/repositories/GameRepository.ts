@@ -1,135 +1,112 @@
-import { db } from '@/utils/firebaseAdmin';
+import { supabase } from '@/utils/supabaseAdmin';
 
 export class GameRepository {
-  /**
-   * Mua đồ bằng Firebase Firestore Transaction để đảm bảo tính Acid (chống Double Spend)
-   */
-  async purchaseItem(userId: string, itemId: string): Promise<boolean> {
-    const profileRef = db.collection('profiles').doc(userId);
-    const itemRef = db.collection('shop_items').doc(itemId);
-    const inventoryRef = db.collection('inventory').doc(`${userId}_${itemId}`);
+    async purchaseItem(userId: string, itemId: string): Promise<boolean> {
+        const { data: profileRow, error: profileErr } = await supabase
+            .from('profiles')
+            .select('sao_vang, inventory, equipped_items')
+            .eq('id', userId)
+            .single();
+        if (profileErr || !profileRow) throw new Error('User profile not found.');
 
-    await db.runTransaction(async (transaction) => {
-      const profileDoc = await transaction.get(profileRef);
-      const itemDoc = await transaction.get(itemRef);
+        const { data: itemRow, error: itemErr } = await supabase
+            .from('shop_items')
+            .select('price, type, name')
+            .eq('id', itemId)
+            .single();
+        if (itemErr || !itemRow) throw new Error('Item not found or not active.');
 
-      if (!profileDoc.exists) throw new Error('User profile not found.');
-      if (!itemDoc.exists) throw new Error('Item not found or not active.');
+        const profileData = profileRow as { sao_vang?: number; inventory?: string[]; equipped_items?: Record<string, string> };
+        const itemData = itemRow as { price: number; type: string; name: string };
+        const sao = profileData.sao_vang ?? 0;
+        if (sao < itemData.price) throw new Error('Không đủ Sao Vàng.');
 
-      const profileData = profileDoc.data()!;
-      const itemData = itemDoc.data()!;
+        const invId = `${userId}_${itemId}`;
+        const { data: existingInv } = await supabase.from('inventory').select('id').eq('id', invId).single();
+        if (existingInv) throw new Error('User already owns this item.');
 
-      if (profileData.sao_vang < itemData.price) {
-        throw new Error('Không đủ Sao Vàng.');
-      }
+        let categoryKey = '';
+        if (itemData.type === 'Màu da') categoryKey = 'skin';
+        else if (itemData.type === 'Trang phục') categoryKey = 'clothes';
+        else if (itemData.type === 'Tóc') categoryKey = 'hair';
+        else if (itemData.type === 'Phụ kiện') categoryKey = 'accessory';
+        if (!categoryKey) throw new Error('Item type mapping failed.');
 
-      const invDoc = await transaction.get(inventoryRef);
-      if (invDoc.exists) {
-        throw new Error('User already owns this item.');
-      }
+        const newInventory = [...(profileData.inventory || []), itemId];
+        const newEquipped = { ...(profileData.equipped_items || {}), [categoryKey]: itemId };
 
-      // 1. Map type sang key của equippedItems
-      let categoryKey = '';
-      if (itemData.type === 'Màu da') categoryKey = 'skin';
-      else if (itemData.type === 'Trang phục') categoryKey = 'clothes';
-      else if (itemData.type === 'Tóc') categoryKey = 'hair';
-      else if (itemData.type === 'Phụ kiện') categoryKey = 'accessory';
+        const { error: updErr } = await supabase
+            .from('profiles')
+            .update({
+                sao_vang: sao - itemData.price,
+                inventory: newInventory,
+                equipped_items: newEquipped,
+            })
+            .eq('id', userId);
+        if (updErr) throw updErr;
 
-      // 2. Chống lỗi map category
-      if (!categoryKey) {
-        throw new Error('Item type mapping failed.');
-      }
+        const { error: invErr } = await supabase.from('inventory').insert({
+            id: invId,
+            user_id: userId,
+            item_id: itemId,
+            is_equipped: true,
+            category: categoryKey,
+            acquired_at: new Date().toISOString(),
+        });
+        if (invErr) throw invErr;
 
-      // 3. Chuẩn bị object update cho Profile
-      const newInventory = [...(profileData.inventory || []), itemId];
-      const newEquippedItems = {
-        ...(profileData.equippedItems || {}),
-        [categoryKey]: itemId
-      };
+        await supabase.from('transaction_log').insert({
+            user_id: userId,
+            amount: -itemData.price,
+            currency: 'sao_vang',
+            type: 'shop_purchase',
+            metadata: { item_id: itemId, item_name: itemData.name },
+        });
 
-      transaction.update(profileRef, {
-        sao_vang: profileData.sao_vang - itemData.price,
-        inventory: newInventory,
-        equippedItems: newEquippedItems
-      });
+        return true;
+    }
 
-      // (Tùy chọn) Vẫn giữ lại Subcollection inventory_records để truy xuất riêng
-      transaction.set(inventoryRef, {
-        user_id: userId,
-        item_id: itemId,
-        is_equipped: true, // Vì tự động mặc vào luôn
-        category: categoryKey,
-        acquired_at: new Date().toISOString()
-      });
+    async recoverStreak(userId: string): Promise<boolean> {
+        const STREAK_RECOVERY_COST = 20;
+        const currentMonth = new Date().toISOString().substring(0, 7);
 
-      // 3. Ghi Log
-      const logRef = db.collection('transaction_log').doc();
-      transaction.set(logRef, {
-        user_id: userId,
-        amount: -itemData.price,
-        currency: 'sao_vang',
-        type: 'shop_purchase',
-        metadata: { item_id: itemId, item_name: itemData.name },
-        created_at: new Date().toISOString()
-      });
-    });
+        const { data: profileRow, error: fetchErr } = await supabase
+            .from('profiles')
+            .select('sao_vang, streak_recovery_count, streak_recovery_month, streak')
+            .eq('id', userId)
+            .single();
+        if (fetchErr || !profileRow) throw new Error('User profile not found.');
 
-    return true;
-  }
+        const data = profileRow as { sao_vang?: number; streak_recovery_count?: number; streak_recovery_month?: string; streak?: number };
+        if ((data.sao_vang ?? 0) < STREAK_RECOVERY_COST) {
+            throw new Error('Bạn không đủ Sao Vàng để khôi phục chuỗi!');
+        }
 
-  /**
-   * Tính năng Khôi phục chuỗi (Streak Recovery)
-   * Tối đa 2 lần/tháng. Trừ Sao Vàng thay vì gongs.
-   */
-  async recoverStreak(userId: string): Promise<boolean> {
-    const profileRef = db.collection('profiles').doc(userId);
-    const STREAK_RECOVERY_COST = 20; // Giả sử tốn 20 Sao Vàng
-    const currentMonth = new Date().toISOString().substring(0, 7); // Format: 'YYYY-MM'
+        let count = data.streak_recovery_count ?? 0;
+        const month = data.streak_recovery_month ?? '';
+        if (month !== currentMonth) count = 0;
+        if (count >= 2) {
+            throw new Error('Bạn đã hết lượt khôi phục chuỗi trong tháng này (Tối đa 2 lần/tháng).');
+        }
 
-    await db.runTransaction(async (transaction) => {
-      const profileDoc = await transaction.get(profileRef);
-      if (!profileDoc.exists) throw new Error('User profile not found.');
+        const { error: updErr } = await supabase
+            .from('profiles')
+            .update({
+                sao_vang: (data.sao_vang ?? 0) - STREAK_RECOVERY_COST,
+                streak_recovery_count: count + 1,
+                streak_recovery_month: currentMonth,
+                streak: (data.streak ?? 0) + 1,
+            })
+            .eq('id', userId);
+        if (updErr) throw updErr;
 
-      const data = profileDoc.data()!;
+        await supabase.from('transaction_log').insert({
+            user_id: userId,
+            amount: -STREAK_RECOVERY_COST,
+            currency: 'sao_vang',
+            type: 'streak_recovery',
+        });
 
-      // 1. Kiểm tra số dư Sao Vàng
-      if ((data.sao_vang || 0) < STREAK_RECOVERY_COST) {
-        throw new Error('Bạn không đủ Sao Vàng để khôi phục chuỗi!');
-      }
-
-      // 2. Kiểm tra giới hạn 2 lần/tháng
-      let count = data.streak_recovery_count || 0;
-      const month = data.streak_recovery_month || '';
-
-      if (month !== currentMonth) {
-        // Reset nếu sang tháng mới
-        count = 0;
-      }
-
-      if (count >= 2) {
-        throw new Error('Bạn đã hết lượt khôi phục chuỗi trong tháng này (Tối đa 2 lần/tháng).');
-      }
-
-      // 3. Thực thi trừ tiền, tăng lượt và khôi phục
-      transaction.update(profileRef, {
-        sao_vang: data.sao_vang - STREAK_RECOVERY_COST,
-        streak_recovery_count: count + 1,
-        streak_recovery_month: currentMonth,
-        // (Logic khôi phục streak: Phụ thuộc vào việc lưu previous_streak. Xin ví dụ mô phỏng +1 để nối tiếp)
-        streak: (data.streak || 0) + 1
-      });
-
-      // 4. Ghi Log
-      const logRef = db.collection('transaction_log').doc();
-      transaction.set(logRef, {
-        user_id: userId,
-        amount: -STREAK_RECOVERY_COST,
-        currency: 'sao_vang',
-        type: 'streak_recovery',
-        created_at: new Date().toISOString()
-      });
-    });
-
-    return true;
-  }
+        return true;
+    }
 }

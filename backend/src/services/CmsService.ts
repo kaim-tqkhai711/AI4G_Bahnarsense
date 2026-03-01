@@ -1,26 +1,16 @@
-import { db } from '@/utils/firebaseAdmin';
+import { supabase } from '@/utils/supabaseAdmin';
 
 export class CmsService {
-    /**
-     * Nhận Payload array từ Google Sheets và ghi đè/cập nhật vào collection `lessons`
-     */
-    async syncLessons(lessonsData: any[]) {
-        const batch = db.batch();
-        const lessonsCollection = db.collection('lessons');
-
+    async syncLessons(lessonsData: Record<string, unknown>[]) {
         let count = 0;
         for (const lesson of lessonsData) {
-            if (!lesson.lesson_id) continue;
+            const lessonId = lesson.lesson_id as string;
+            if (!lessonId) continue;
 
-            const docRef = lessonsCollection.doc(lesson.lesson_id);
-            batch.set(docRef, {
-                ...lesson,
-                updated_at: new Date().toISOString()
-            }, { merge: true }); // Merge true để Cập nhật hoặc Thêm mới
-            count++;
+            const row = { ...lesson, updated_at: new Date().toISOString() };
+            const { error } = await supabase.from('lessons').upsert(row, { onConflict: 'lesson_id' });
+            if (!error) count++;
         }
-
-        await batch.commit();
         return { synced_count: count };
     }
 }

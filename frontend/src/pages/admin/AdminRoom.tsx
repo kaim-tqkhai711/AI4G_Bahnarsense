@@ -16,7 +16,12 @@ export function AdminRoom() {
                 const token = useUserStore.getState().token;
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-                const response = await fetchWithMonitor<{ success: boolean, data: Lesson[] }>(
+                if (!token) {
+                    setLessons([]);
+                    return;
+                }
+
+                const response = await fetchWithMonitor<{ success: boolean; data: Lesson[] } | Lesson[]>(
                     `${API_URL}/api/v1/lessons`,
                     {
                         headers: {
@@ -27,7 +32,8 @@ export function AdminRoom() {
                     3000
                 );
 
-                setLessons(response?.data || []);
+                const list = Array.isArray(response) ? response : (response?.data ?? []);
+                setLessons(list);
             } catch (err) {
                 console.warn("[AdminRoom] Lỗi API, fallback sang MockData:", err);
                 setLessons([]);

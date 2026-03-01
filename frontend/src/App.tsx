@@ -1,9 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { WelcomeScreen } from './pages/auth/WelcomeScreen';
+import { AuthCallback } from './pages/auth/AuthCallback';
 import { SurveyScreen } from './pages/auth/SurveyScreen';
 import { MainLayout } from './layouts/MainLayout';
 import { LearnRoom } from './pages/learn/LearnRoom';
-import { LessonIntro } from './pages/learn/LessonIntro'; // Added LessonIntro import
+import { LessonIntro } from './pages/learn/LessonIntro';
 import { LessonInteractive } from './pages/learn/LessonInteractive';
 import { RewardsScreen } from './pages/learn/RewardsScreen';
 import { ReviewRoom } from './pages/review/ReviewRoom';
@@ -24,11 +26,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function App() {
+/** If Supabase sent tokens in URL but we're not on callback, redirect to /auth/callback so we keep the hash */
+function useOAuthRedirectGuard() {
+  const location = useLocation();
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    const hasTokens = hash.includes('access_token') || hash.includes('refresh_token') || search.includes('code=');
+    if (hasTokens && location.pathname !== '/auth/callback') {
+      window.location.replace(`/auth/callback${hash}${search}`);
+    }
+  }, [location.pathname]);
+}
+
+function AppRoutes() {
+  useOAuthRedirectGuard();
   return (
-    <BrowserRouter>
-      <Routes>
+    <Routes>
         <Route path="/welcome" element={<WelcomeScreen />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/survey" element={<SurveyScreen />} />
 
         {/* Protected Routes inside MainLayout */}
@@ -47,7 +63,14 @@ function App() {
 
         {/* Admin Route - basic unprotected for MVP */}
         <Route path="/admin" element={<AdminRoom />} />
-      </Routes>
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

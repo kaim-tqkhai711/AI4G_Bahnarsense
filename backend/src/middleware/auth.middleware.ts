@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { auth } from '@/utils/firebaseAdmin';
+import { verifySupabaseToken } from '@/utils/supabaseAuth';
 import * as Sentry from '@sentry/node';
 
-// Extend Express Request type
 declare global {
     namespace Express {
         interface Request {
@@ -31,24 +30,22 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
             return;
         }
 
-        // Verify token using Firebase Admin
-        const decodedToken = await auth.verifyIdToken(token);
+        const payload = verifySupabaseToken(token);
 
-        // Attach to request
         req.user = {
-            id: decodedToken.uid,
-            email: decodedToken.email,
-            role: decodedToken.role || 'student', // Custom claims can hold roles
+            id: payload.sub,
+            email: payload.email,
+            role: payload.role || 'student',
         };
 
         next();
-    } catch (error: any) {
-        if (error.code === 'auth/id-token-expired') {
-            res.status(401).json({ success: false, message: 'Unauthorized: Firebase token expired' });
+    } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'name' in error && error.name === 'TokenExpiredError') {
+            res.status(401).json({ success: false, message: 'Unauthorized: token expired' });
             return;
         }
 
         Sentry.captureException(error, { extra: { context: 'authMiddleware' } });
-        res.status(401).json({ success: false, message: 'Unauthorized: internal auth error' });
+        res.status(401).json({ success: false, message: 'Unauthorized: invalid token' });
     }
 };

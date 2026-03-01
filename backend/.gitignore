@@ -1,5 +1,8 @@
 node_modules
 # Keep environment variables out of version control
 .env
+# Firebase service account key (never commit)
+**/firebase-service-account*.json
+**/keys/*.json
 
 /src/generated/prisma

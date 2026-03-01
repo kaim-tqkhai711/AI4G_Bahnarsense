@@ -1,81 +1,74 @@
-import { db } from '@/utils/firebaseAdmin';
+import { supabase } from '@/utils/supabaseAdmin';
 
 export class ReviewRepository {
-    /**
-     * Log một lỗi mới. Nếu item_id này đã từng sai, cập nhật lại thuật toán.
-     */
-    async logError(uid: string, data: any) {
-        const errorRef = db.collection(`review_cards_${uid}`).doc(data.item_id);
+    async logError(uid: string, data: { item_id: string; [key: string]: unknown }) {
+        const { data: existing } = await supabase
+            .from('review_cards')
+            .select('id, error_count')
+            .eq('user_id', uid)
+            .eq('item_id', data.item_id)
+            .maybeSingle();
 
-        // Thuật toán ghi đè cơ bản của SuperMemo-2 (SM-2 simplified)
-        const doc = await errorRef.get();
-        let nextReviewFactor = 1;
-
-        if (doc.exists) {
-            const existing = doc.data()!;
-            nextReviewFactor = (existing.error_count || 1) + 1;
-        }
-
-        // Thời gian nhắc lại = today + (số lần sai * 1 ngày) -> logic thô
+        const nextReviewFactor = existing?.error_count ? (existing.error_count as number) + 1 : 1;
         const nextReviewDate = new Date();
         nextReviewDate.setDate(nextReviewDate.getDate() + nextReviewFactor);
 
-        await errorRef.set({
-            ...data,
+        const { item_id: _omit, ...rest } = data;
+        const payload = {
+            user_id: uid,
+            item_id: data.item_id,
+            ...rest,
             error_count: nextReviewFactor,
             next_review_date: nextReviewDate.toISOString(),
-            updated_at: new Date().toISOString()
-        }, { merge: true });
+            updated_at: new Date().toISOString(),
+        };
 
+        if (existing?.id) {
+            await supabase.from('review_cards').update(payload).eq('id', existing.id);
+        } else {
+            await supabase.from('review_cards').insert(payload);
+        }
         return { success: true };
     }
 
-    /**
-     * Lấy danh sách nhiệm vụ cần ôn tập ngày hôm nay (Next Review Date <= Now)
-     */
     async getDailyTasks(uid: string) {
         const today = new Date().toISOString();
-
-        const snapshot = await db.collection(`review_cards_${uid}`)
-            .where('next_review_date', '<=', today)
-            .limit(20) // Chỉ lấy max 20 từ mỗi ngày đỡ ngợp
-            .get();
-
-        return snapshot.docs.map(doc => doc.data());
+        const { data, error } = await supabase
+            .from('review_cards')
+            .select('*')
+            .eq('user_id', uid)
+            .lte('next_review_date', today)
+            .limit(20);
+        if (error) throw error;
+        return data || [];
     }
 
-    /**
-     * Lấy tất cả các thẻ đang đến hạn ôn tập (phục vụ Smart Reminder)
-     */
     async getDueReviews(uid: string) {
         const today = new Date().toISOString();
-        const snapshot = await db.collection(`review_cards_${uid}`)
-            .where('next_review_date', '<=', today)
-            .get();
-
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const { data, error } = await supabase
+            .from('review_cards')
+            .select('*')
+            .eq('user_id', uid)
+            .lte('next_review_date', today);
+        if (error) throw error;
+        return (data || []).map((row: Record<string, unknown>) => ({ id: row.id, ...row }));
     }
 
-    /**
-     * Dời lịch tất cả các thẻ đang đến hạn sang một ngày khác
-     */
     async postponeReviews(uid: string, newDate: string) {
         const today = new Date().toISOString();
-        const snapshot = await db.collection(`review_cards_${uid}`)
-            .where('next_review_date', '<=', today)
-            .get();
+        const { data: rows, error: fetchErr } = await supabase
+            .from('review_cards')
+            .select('id')
+            .eq('user_id', uid)
+            .lte('next_review_date', today);
+        if (fetchErr || !rows?.length) return 0;
 
-        if (snapshot.empty) return 0;
-
-        const batch = db.batch();
-        snapshot.docs.forEach(doc => {
-            batch.update(doc.ref, {
-                next_review_date: newDate,
-                updated_at: new Date().toISOString()
-            });
-        });
-
-        await batch.commit();
-        return snapshot.docs.length;
+        for (const row of rows) {
+            await supabase
+                .from('review_cards')
+                .update({ next_review_date: newDate, updated_at: new Date().toISOString() })
+                .eq('id', row.id);
+        }
+        return rows.length;
     }
 }

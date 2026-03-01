@@ -20,15 +20,43 @@ export const app = express();
 // ==========================================
 // 1. Core Middlewares
 // ==========================================
-app.use(helmet());
+// In development, disable CSP so Chrome DevTools and frontend (different origin) are not blocked
+app.use(helmet({
+    contentSecurityPolicy: config.env === 'development' ? false : undefined,
+}));
 app.use(cors());
 app.use(express.json());
 
 // ==========================================
 // 2. Health & Base Routes
 // ==========================================
+// Root: avoid 404 when visiting http://localhost:8000/
+app.get('/', (req: Request, res: Response) => {
+    res.status(200).json({
+        message: 'Ba Na Học API',
+        docs: 'Use the frontend at http://localhost:5173',
+        health: '/health',
+    });
+});
+// Chrome DevTools probes this; respond so it does not 404 or trigger CSP
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (req: Request, res: Response) => {
+    res.status(204).end();
+});
 app.get('/health', (req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', environment: config.env });
+});
+
+// Quick way to verify Supabase connection (e.g. open http://localhost:8000/health/supabase)
+app.get('/health/supabase', async (req: Request, res: Response) => {
+    try {
+        const { supabase } = await import('@/utils/supabaseAdmin');
+        const { error } = await supabase.from('profiles').select('id').limit(1);
+        if (error) throw error;
+        res.status(200).json({ supabase: 'ok', message: 'Connected to Supabase. Tables are reachable.' });
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        res.status(503).json({ supabase: 'error', message });
+    }
 });
 
 // Sentry test endpoint (intentional error)

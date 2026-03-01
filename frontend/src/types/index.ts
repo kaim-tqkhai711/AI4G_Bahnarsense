@@ -17,13 +17,14 @@ export type UserState = {
     isGuest?: boolean;
 };
 
-export type LessonType = 'vocab' | 'grammar';
+export type LessonType = 'vocab' | 'grammar' | 'pronunciation' | 'vocabulary';
 
 export type Lesson = {
     id: string;
     topic: string;
     difficulty: number;
     type: LessonType;
+    status?: 'locked' | 'active' | 'done';
 };
 
 export type Mistake = {

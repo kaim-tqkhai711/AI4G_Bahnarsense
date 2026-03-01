@@ -4,8 +4,8 @@ import { X, CalendarClock, PlayCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/useUserStore';
 
-// Lấy API URL từ env, fallback
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = `${API_BASE}/api/v1`;
 
 export function SmartReviewReminder() {
     const [isOpen, setIsOpen] = useState(false);
