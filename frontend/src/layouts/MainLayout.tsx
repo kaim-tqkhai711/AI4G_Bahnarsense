@@ -71,22 +71,36 @@ function LeftSidebar() {
                             key={tab.path}
                             to={tab.path}
                             className={cn(
-                                "relative flex items-center p-3 md:px-4 md:py-3 rounded-2xl transition-all duration-300 group",
-                                isActive ? "bg-stone-900 text-white" : "text-stone-500 hover:bg-stone-50 hover:text-stone-900"
+                                "relative flex items-center p-3 md:px-4 md:py-3 rounded-2xl transition-all duration-300 group overflow-hidden",
+                                isActive
+                                    ? "text-white"
+                                    : "text-stone-500 hover:bg-stone-50 hover:text-stone-900"
                             )}
                         >
-                            <Icon className={cn("w-6 h-6 md:w-5 md:h-5 transition-transform", isActive ? "scale-110" : "group-hover:scale-110")} />
-                            <span className={cn("hidden md:block ml-3 font-semibold text-[15px]", isActive ? "opacity-100" : "opacity-70")}>
-                                {tab.label}
-                            </span>
-
                             {isActive && (
                                 <motion.div
                                     layoutId="sidebar-active"
-                                    className="absolute inset-0 border-2 border-stone-900 rounded-2xl z-[-1]"
-                                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                    className="absolute inset-0 rounded-2xl bg-stone-900"
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
                                 />
                             )}
+
+                            <div className="relative z-10 flex items-center">
+                                <Icon
+                                    className={cn(
+                                        "w-6 h-6 md:w-5 md:h-5 transition-transform",
+                                        isActive ? "scale-110" : "group-hover:scale-110"
+                                    )}
+                                />
+                                <span
+                                    className={cn(
+                                        "hidden md:block ml-3 font-semibold text-[15px]",
+                                        isActive ? "opacity-100" : "opacity-80"
+                                    )}
+                                >
+                                    {tab.label}
+                                </span>
+                            </div>
                         </Link>
                     );
                 })}

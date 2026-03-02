@@ -18,12 +18,36 @@ export class AuthService {
      */
     async verifyLoginToken(token: string) {
         try {
-            const payload = verifySupabaseToken(token);
+            let payload;
+            try {
+                payload = verifySupabaseToken(token);
+            } catch (err) {
+                // Surface a clear message to the client while logging the original error
+                // eslint-disable-next-line no-console
+                console.error('[AuthService.verifyLoginToken] JWT verify failed', err);
+                throw new Error('Token Supabase không hợp lệ. Vui lòng đăng nhập lại.');
+            }
+
             const { sub, email } = payload;
 
-            const emailStr = email ?? undefined;
+            if (!sub) {
+                throw new Error('Token Supabase thiếu user id (sub). Vui lòng đăng nhập lại.');
+            }
+
+            let emailStr = email ?? undefined;
             if (!emailStr) {
-                throw new Error('Token không chứa email hợp lệ.');
+                // Fallback: fetch user from Supabase Auth by id to get email
+                const { data, error } = await supabase.auth.admin.getUserById(sub);
+                if (error) {
+                    // eslint-disable-next-line no-console
+                    console.error('[AuthService.verifyLoginToken] getUserById failed', error);
+                    throw new Error('Không thể lấy thông tin người dùng từ Supabase.');
+                }
+                emailStr = data.user.email ?? undefined;
+            }
+
+            if (!emailStr) {
+                throw new Error('Không tìm thấy email hợp lệ trong tài khoản Supabase.');
             }
 
             const { profile, isNewUser } = await this.authRepository.getProfileOrCreate(

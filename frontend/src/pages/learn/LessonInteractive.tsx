@@ -98,7 +98,7 @@ export function LessonInteractive() {
             </div>
 
             {/* In-Lesson Workspace */}
-            <div className="flex-1 px-6 pt-8 pb-32 flex flex-col max-w-lg mx-auto w-full">
+            <div className="flex-1 px-6 pt-8 pb-10 flex flex-col max-w-lg mx-auto w-full">
 
                 <h1 className="text-2xl font-black text-stone-800 mb-8">
                     {question.prompt}
@@ -158,25 +158,25 @@ export function LessonInteractive() {
                 )}
             </div>
 
-            {/* Bottom Floating Action Bar & Feedback */}
-            <div className="fixed bottom-0 left-0 right-0 z-20">
+            {/* Bottom Action Bar & Feedback – aligned with content column */}
+            <div className="w-full px-6 pb-6 pt-2 flex flex-col items-center">
 
                 {/* Feedback Panel */}
                 <AnimatePresence>
                     {status === 'wrong' && (
                         <motion.div
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            className="bg-[#ffdfe0] px-6 pt-6 pb-24 absolute bottom-0 left-0 right-0 rounded-t-3xl -z-10"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            className="bg-[#ffdfe0] px-4 py-4 rounded-2xl mb-4 w-full max-w-lg shadow-sm"
                         >
-                            <div className="max-w-lg mx-auto flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#ff4b4b] shrink-0">
-                                    <XCircle size={32} />
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#ff4b4b] shrink-0">
+                                    <XCircle size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-[#ea2b2b] font-black text-xl mb-1">Chưa đúng rồi!</h3>
-                                    <p className="text-[#ea2b2b] font-bold opacity-80">Gợi ý: {question.hint}</p>
+                                    <h3 className="text-[#ea2b2b] font-black text-base mb-1">Chưa đúng rồi!</h3>
+                                    <p className="text-[#ea2b2b] font-semibold text-sm opacity-90">Gợi ý: {question.hint}</p>
                                 </div>
                             </div>
                         </motion.div>
@@ -184,17 +184,17 @@ export function LessonInteractive() {
 
                     {status === 'correct' && (
                         <motion.div
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            className="bg-[#d7ffb8] px-6 pt-6 pb-24 absolute bottom-0 left-0 right-0 rounded-t-3xl -z-10"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            className="bg-[#d7ffb8] px-4 py-4 rounded-2xl mb-4 w-full max-w-lg shadow-sm"
                         >
-                            <div className="max-w-lg mx-auto flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#58cc02] shrink-0">
-                                    <CheckCircle size={32} />
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#58cc02] shrink-0">
+                                    <CheckCircle size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-[#58cc02] font-black text-xl mb-1">Tuyệt vời!</h3>
+                                    <h3 className="text-[#58cc02] font-black text-base mb-1">Tuyệt vời!</h3>
                                 </div>
                             </div>
                         </motion.div>
@@ -202,7 +202,7 @@ export function LessonInteractive() {
                 </AnimatePresence>
 
                 {/* Button Container */}
-                <div className="bg-transparent px-6 pb-6 pt-4 max-w-lg mx-auto w-full border-t-transparent flex justify-center">
+                <div className="w-full max-w-lg flex justify-center">
                     {status === 'idle' || status === 'checking' ? (
                         <button
                             disabled={!selectedAnswer || status === 'checking'}

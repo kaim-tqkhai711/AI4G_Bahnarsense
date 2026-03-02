@@ -98,7 +98,7 @@ export function LearnRoom() {
     return (
         <div className="flex flex-col items-center py-6 w-full relative">
             {/* Header section with Mascot & Greeting */}
-            <div className="flex flex-col items-center text-center z-10 mb-8 mt-2">
+            <div className="flex flex-col items-center text-center z-10 mb-10 mt-4">
                 <div className="w-24 h-24 rounded-full bg-[#f3f4f6] mb-4 flex items-center justify-center border-[6px] border-white shadow-[0_4px_15px_rgba(0,0,0,0.05)] overflow-hidden text-5xl relative">
                     🐘
                     <div className="absolute inset-0 bg-gradient-to-t from-stone-200/50 to-transparent"></div>
@@ -112,7 +112,7 @@ export function LearnRoom() {
             </div>
 
             {/* Path SVG Background */}
-            <div className="absolute top-[200px] bottom-24 left-0 right-0 z-0 flex justify-center overflow-hidden pointer-events-none">
+            <div className="absolute top-[240px] bottom-24 left-0 right-0 z-0 flex justify-center overflow-hidden pointer-events-none">
                 <svg width="200" height="100%" className="overflow-visible" style={{ minHeight: `${lessons.length * 120}px` }}>
                     {lessons.map((lesson, idx) => {
                         if (idx === lessons.length - 1) return null;
@@ -143,7 +143,7 @@ export function LearnRoom() {
                 </svg>
             </div>
 
-            <div className="flex flex-col w-full items-center relative z-10 mb-24 mt-4" style={{ gap: '40px' }}>
+            <div className="flex flex-col w-full items-center relative z-10 mb-24 mt-8" style={{ gap: '44px' }}>
                 {lessons.map((lesson, index) => {
                     const completedLessons = user?.completedLessons || [];
                     const isCompleted = completedLessons.includes(lesson.id);

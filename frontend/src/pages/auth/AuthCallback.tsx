@@ -26,7 +26,10 @@ export function AuthCallback() {
 
         const syncWithBackend = async (accessToken: string) => {
             try {
-                const response = await fetchWithMonitor<{ isNewUser: boolean; user: Record<string, unknown> }>(
+                const response = await fetchWithMonitor<
+                    | { isNewUser: boolean; user: Record<string, unknown> }
+                    | { success: boolean; data: { isNewUser: boolean; user: Record<string, unknown> } }
+                >(
                     `${API_URL}/api/v1/auth/login`,
                     {
                         method: 'POST',
@@ -37,25 +40,26 @@ export function AuthCallback() {
                     10000
                 );
 
-                const dbUser = response.user;
+                const payload = 'user' in response ? response : response.data;
+                const dbUser = payload.user;
                 setAuth(
                     {
-                        id: (dbUser.id as string) ?? '',
-                        name: (dbUser.name as string) || (dbUser.username as string) || 'Học sinh mới',
-                        level: dbUser.level as string | undefined,
-                        xp: (dbUser.xp as number) ?? 0,
-                        sao_vang: (dbUser.sao_vang as number) ?? 0,
-                        gems: (dbUser.gems as number) ?? 0,
-                        streak: (dbUser.streak as number) ?? 0,
-                        inventory: (dbUser.inventory as string[]) ?? [],
-                        equippedItems: (dbUser.equippedItems as Record<string, string>) ?? {},
-                        completedLessons: (dbUser.completedLessons as string[]) ?? [],
+                        id: (dbUser?.id as string) ?? '',
+                        name: (dbUser?.name as string) || (dbUser?.username as string) || 'Học sinh mới',
+                        level: dbUser?.level as string | undefined,
+                        xp: (dbUser?.xp as number) ?? 0,
+                        sao_vang: (dbUser?.sao_vang as number) ?? 0,
+                        gems: (dbUser?.gems as number) ?? 0,
+                        streak: (dbUser?.streak as number) ?? 0,
+                        inventory: (dbUser?.inventory as string[]) ?? [],
+                        equippedItems: (dbUser?.equippedItems as Record<string, string>) ?? {},
+                        completedLessons: (dbUser?.completedLessons as string[]) ?? [],
                         isGuest: false,
                     },
                     accessToken
                 );
 
-                if (response.isNewUser || !dbUser.level) {
+                if (payload.isNewUser || !dbUser?.level) {
                     navigate('/survey', { replace: true });
                 } else {
                     navigate('/', { replace: true });

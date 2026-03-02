@@ -9,7 +9,7 @@ import { MascotKorai } from '../../components/MascotKorai';
 // Phân loại danh mục
 const CATEGORIES = ['Tất cả', 'Trang phục', 'Tóc', 'Màu da', 'Phụ kiện'];
 
-// Mock hệt thống vật phẩm API
+// Mock hệ thống vật phẩm API
 const SHOP_ITEMS = [
     { id: 'item_hat_1', name: 'Nón Lá Truyền Thống', price: 150, type: 'Trang phục', icon: '👒' },
     { id: 'item_glasses_1', name: 'Kính Râm Coolngầu', price: 80, type: 'Phụ kiện', icon: '🕶️' },
@@ -28,13 +28,17 @@ export function ShopRoom() {
     const [equipped, setEquipped] = useState<Record<string, string>>(user?.equippedItems || {});
     // Danh sách đồ đang "thử" (Lưu object để map với category)
     const [previewItem, setPreviewItem] = useState<{ id: string, categoryKey: string } | null>(null);
+    // Item đang được focus để hiển thị ở panel chi tiết
+    const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState('Tất cả');
 
-    // Status thanh toán: idle -> confirm -> success | error
-    const [paymentStatus, setPaymentStatus] = useState<'idle' | 'confirm' | 'success' | 'error'>('idle');
+    // Status thanh toán: idle -> success | error (đơn giản cho học sinh)
+    const [paymentStatus, setPaymentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-    // Lọc theo tag
-    const filteredItems = SHOP_ITEMS.filter(item => activeTab === 'Tất cả' || item.type === activeTab);
+    // Lọc theo tag + sắp xếp theo giá tăng dần (nhìn giống “sort theo type & giá”)
+    const filteredItems = SHOP_ITEMS
+        .filter(item => activeTab === 'Tất cả' || item.type === activeTab)
+        .sort((a, b) => a.price - b.price);
 
     const getCategoryKey = (type: string) => {
         switch (type) {
@@ -50,6 +54,7 @@ export function ShopRoom() {
     const handleItemClick = (item: typeof SHOP_ITEMS[0]) => {
         const isOwned = ownedItems.includes(item.id);
         const categoryKey = getCategoryKey(item.type);
+        setFocusedItemId(item.id);
 
         if (isOwned) {
             // Toggle mặc / tháo
@@ -76,12 +81,13 @@ export function ShopRoom() {
     }
 
     const selectedToBuy = SHOP_ITEMS.find(i => i.id === previewItem?.id);
+    const focusedItem = SHOP_ITEMS.find(i => i.id === (focusedItemId || previewItem?.id));
 
     const handleConfirmPurchase = () => {
         if (!selectedToBuy) return;
 
         if (balance >= selectedToBuy.price) {
-            setPaymentStatus('confirm');
+            void executePurchase();
         } else {
             setPaymentStatus('error');
         }
@@ -106,8 +112,9 @@ export function ShopRoom() {
 
         // Cập nhật lên CSDL bằng Fallback Monitor
         try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
             await fetchWithMonitor(
-                'http://localhost:8000/api/v1/shop/buy',
+                `${API_URL}/api/v1/shop/buy`,
                 {
                     method: 'POST',
                     headers: {
@@ -152,8 +159,8 @@ export function ShopRoom() {
                     </div>
                 </div>
 
-                {/* Mascot Podium */}
-                <div className="relative w-full aspect-square bg-gradient-to-b from-stone-100 to-stone-200 rounded-[2.5rem] flex flex-col items-center justify-center p-8 overflow-hidden shadow-inner border border-stone-200/60">
+                {/* Mascot Podium – dựng khung đứng để lộ toàn bộ nhân vật */}
+                <div className="relative w-full h-[320px] md:h-[380px] bg-gradient-to-b from-stone-100 to-stone-200 rounded-[2.5rem] flex flex-col items-center justify-center px-6 pt-8 pb-10 overflow-hidden shadow-inner border border-stone-200/60">
                     {/* Hào quang khi preview đồ xịn */}
                     <AnimatePresence>
                         {previewItem && (
@@ -166,16 +173,16 @@ export function ShopRoom() {
                         )}
                     </AnimatePresence>
 
-                    <div className="relative z-10 transform scale-150 origin-bottom pb-8">
+                    <div className="relative z-10 flex items-center justify-center h-full">
                         <MascotKorai equippedItems={mascotDisplayItems} />
                     </div>
 
-                    <div className="absolute bottom-8 w-3/4 h-8 bg-stone-300/40 rounded-[100%] blur-sm -z-0" />
+                    <div className="absolute bottom-6 w-3/4 h-8 bg-stone-300/40 rounded-[100%] blur-sm -z-0" />
                 </div>
             </div>
 
             {/* CỘT PHẢI: CỬA HÀNG (Grid) */}
-            <div className="w-full md:w-2/3 flex flex-col bg-white rounded-[2.5rem] shadow-sm border border-stone-100 p-6 md:p-8">
+            <div className="w-full md:w-2/3 flex flex-col bg-white rounded-[2.5rem] shadow-sm border border-stone-100 p-6 md:p-8 relative">
 
                 <h2 className="text-2xl font-black text-stone-900 mb-6 flex items-center gap-3 tracking-tight">
                     <ShoppingBag className="w-7 h-7 text-emerald-500" />
@@ -183,7 +190,7 @@ export function ShopRoom() {
                 </h2>
 
                 {/* Navigation Tabs */}
-                <div className="flex overflow-x-auto gap-2 pb-4 no-scrollbar mb-4">
+                <div className="flex overflow-x-auto gap-2 pb-3 no-scrollbar mb-3">
                     {CATEGORIES.map(cat => (
                         <button
                             key={cat}
@@ -199,7 +206,7 @@ export function ShopRoom() {
                 </div>
 
                 {/* Grid Item */}
-                <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+                <div className="flex-1 overflow-y-auto no-scrollbar pb-28">
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredItems.map((item) => {
                             const isOwned = ownedItems.includes(item.id);
@@ -234,12 +241,17 @@ export function ShopRoom() {
                                     <h3 className="font-bold text-stone-900 text-sm mb-1 leading-tight text-center">{item.name}</h3>
 
                                     <div className="mt-auto pt-3">
-                                        {!isOwned && (
-                                            <div className="flex items-center justify-center gap-1.5 font-black text-rose-500 bg-rose-50 py-1.5 rounded-xl">
-                                                <Sparkles className="w-3.5 h-3.5" />
-                                                {item.price}
-                                            </div>
-                                        )}
+                                        <div
+                                            className={`flex items-center justify-center gap-1.5 font-black py-1.5 rounded-xl text-xs ${
+                                                isOwned
+                                                    ? 'bg-stone-100 text-stone-500'
+                                                    : 'bg-rose-50 text-rose-500'
+                                            }`}
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            <span>{item.price}</span>
+                                            <span className="text-[10px] uppercase tracking-wide">Sao</span>
+                                        </div>
                                     </div>
                                 </motion.div>
                             );
@@ -247,48 +259,54 @@ export function ShopRoom() {
                     </div>
                 </div>
 
-                {/* Thanh Action nổi (1-screen 1-action rule) */}
+                {/* Thanh action nổi: cố định ở đáy cột, không đẩy grid xuống khi scroll */}
                 <AnimatePresence>
-                    {previewItem && selectedToBuy && (
+                    {focusedItem && (
                         <motion.div
-                            initial={{ y: 100, opacity: 0 }}
+                            initial={{ y: 80, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 100, opacity: 0 }}
-                            className="absolute bottom-6 left-6 right-6 md:left-auto md:w-[calc(66.666%-3rem)] bg-stone-900 rounded-[2rem] p-4 flex items-center justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2 border-stone-700 z-50"
+                            exit={{ y: 80, opacity: 0 }}
+                            className="pointer-events-none absolute bottom-4 left-0 right-0 flex justify-center"
                         >
-                            <div className="flex items-center gap-3 text-white pl-2">
-                                <div className="text-3xl">{selectedToBuy.icon}</div>
-                                <div>
-                                    <h4 className="font-bold">{selectedToBuy.name}</h4>
-                                    <p className="text-sm font-medium text-stone-400">Giá: {selectedToBuy.price} Sao</p>
+                            <div className="pointer-events-auto max-w-sm w-[90%] md:w-[70%] rounded-[2rem] bg-stone-900 text-white px-4 py-3 md:px-5 md:py-4 flex items-center justify-between gap-3 shadow-[0_18px_45px_rgba(0,0,0,0.35)] border border-stone-700">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-stone-800 flex items-center justify-center text-2xl">
+                                        {focusedItem.icon}
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold leading-tight">{focusedItem.name}</p>
+                                        <p className="text-[11px] font-semibold text-stone-300 mt-0.5">
+                                            Giá: {focusedItem.price} Sao
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    {ownedItems.includes(focusedItem.id) ? (
+                                        <span className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wide">
+                                            Đã có trong tủ đồ
+                                        </span>
+                                    ) : paymentStatus === 'error' && selectedToBuy?.id === focusedItem.id ? (
+                                        <span className="text-[11px] font-semibold text-rose-300 flex items-center gap-1">
+                                            <AlertCircle className="w-3.5 h-3.5" />
+                                            Thiếu {focusedItem.price - balance} Sao
+                                        </span>
+                                    ) : paymentStatus === 'success' && selectedToBuy?.id === focusedItem.id ? (
+                                        <span className="text-[11px] font-semibold text-emerald-300 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                            Đã mua & trang bị!
+                                        </span>
+                                    ) : null}
+
+                                    {!ownedItems.includes(focusedItem.id) && (
+                                        <button
+                                            onClick={handleConfirmPurchase}
+                                            className="mt-1 inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-white text-stone-900 text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-transform"
+                                        >
+                                            Mua ngay
+                                        </button>
+                                    )}
                                 </div>
                             </div>
-
-                            {paymentStatus === 'idle' && (
-                                <button
-                                    onClick={handleConfirmPurchase}
-                                    className="bg-white text-stone-900 font-bold px-6 py-3.5 rounded-2xl shadow-sm hover:scale-105 transition-transform"
-                                >
-                                    Mua ngay
-                                </button>
-                            )}
-
-                            {paymentStatus === 'confirm' && (
-                                <button
-                                    onClick={executePurchase}
-                                    className="bg-emerald-500 text-white font-bold px-6 py-3.5 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:bg-emerald-400 transition-colors flex items-center gap-2"
-                                >
-                                    <CheckCircle2 className="w-5 h-5" />
-                                    Xác nhận mua
-                                </button>
-                            )}
-
-                            {paymentStatus === 'error' && (
-                                <div className="bg-rose-500 text-white font-bold px-6 py-3.5 rounded-2xl flex items-center gap-2">
-                                    <AlertCircle className="w-5 h-5" />
-                                    Thiếu {selectedToBuy.price - balance} Sao
-                                </div>
-                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>

@@ -1,261 +1,351 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sword, Loader2, Trophy, User } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { Sword, Trophy, User, HeartHandshake } from 'lucide-react';
 import { socket } from '../../lib/socket';
 import { triggerWinBurst } from '../../lib/confetti';
 import { useUserStore } from '../../store/useUserStore';
 
-type MatchState = 'idle' | 'searching' | 'found' | 'countdown' | 'playing' | 'finished';
+type Friend = {
+    id: string;
+    name: string;
+    xp: number;
+    streak: number;
+    online: boolean;
+};
+
+type IncomingChallenge = {
+    fromId: string;
+    fromName: string;
+};
+
+function levelFromXp(xp: number): string {
+    if (xp < 300) return 'Mầm non';
+    if (xp < 800) return 'Tiểu học';
+    if (xp < 1500) return 'THCS';
+    if (xp < 2500) return 'THPT';
+    return 'Cao thủ';
+}
 
 export function CommunityRoom() {
     const { user } = useUserStore();
     const currentUserId = user?.id || 'guest';
     const currentUserName = user?.name || 'Khách';
-    const isAdvancedLevel = (user?.streak || 0) > 0;
+    const currentXp = user?.xp || 0;
 
-    const [matchState, setMatchState] = useState<MatchState>('idle');
-    const [roomId, setRoomId] = useState<string | null>(null);
-    const [countdown, setCountdown] = useState(3);
-    const [opponentId, setOpponentId] = useState<string>('Opponent_XYZ');
+    const [incoming, setIncoming] = useState<IncomingChallenge[]>([]);
+    const [lastMatchResult, setLastMatchResult] = useState<'win' | 'lose' | null>(null);
+    // Đôi bạn cùng tiến: target số bài trong ngày (mock dữ liệu)
+    const buddyTarget = 3;
+    const buddyProgress = {
+        you: 2,
+        friend: 1,
+        friendName: 'An',
+    };
 
-    // In-game states
-    const [myScore, setMyScore] = useState(0);
-    const [opponentScore, setOpponentScore] = useState(0);
-    const [winner, setWinner] = useState<string | null>(null);
-    const TOTAL_QUESTIONS = 5;
+    // Mock friends & suggestions – in thực tế sẽ lấy từ backend
+    const friends: Friend[] = useMemo(
+        () => [
+            { id: 'friend_an', name: 'An', xp: 1200, streak: 5, online: true },
+            { id: 'friend_binh', name: 'Bình', xp: 900, streak: 12, online: false },
+            { id: 'friend_chi', name: 'Chi', xp: 1800, streak: 21, online: true },
+        ],
+        []
+    );
+
+    const suggestions: Friend[] = useMemo(
+        () => [
+            { id: 'sug_hai', name: 'Hải', xp: currentXp + 100, streak: 3, online: true },
+            { id: 'sug_lan', name: 'Lan', xp: currentXp - 120, streak: 7, online: true },
+            { id: 'sug_phong', name: 'Phong', xp: currentXp + 260, streak: 1, online: false },
+        ],
+        [currentXp]
+    );
 
     useEffect(() => {
-        // 1. Kết nối và Authenticate
         socket.connect();
         socket.emit('authenticate', { user_id: currentUserId });
 
-        // 2. Lắng nghe các event từ Backend
-        socket.on('receive_challenge', (data) => {
-            setOpponentId(data.from_user);
-            setMatchState('found');
+        socket.on('receive_challenge', (data: { from_user: string; from_name?: string }) => {
+            setIncoming((prev) => [
+                ...prev,
+                {
+                    fromId: data.from_user,
+                    fromName: data.from_name || data.from_user,
+                },
+            ]);
         });
 
-        socket.on('match_start', (data) => {
-            setRoomId(data.room_id);
-            setMatchState('countdown');
-            startCountdown();
-        });
-
-        socket.on('opponent_progress', (data) => {
-            if (data.correct) {
-                setOpponentScore(prev => prev + 1);
-            }
-        });
-
-        socket.on('match_end', (data) => {
-            setMatchState('finished');
-            setWinner(data.winner_id);
-            if (data.winner_id === currentUserId) {
+        socket.on('match_end', (data: { winner_id: string }) => {
+            const win = data.winner_id === currentUserId;
+            setLastMatchResult(win ? 'win' : 'lose');
+            if (win) {
                 triggerWinBurst();
             }
         });
 
         return () => {
             socket.off('receive_challenge');
-            socket.off('match_start');
-            socket.off('opponent_progress');
             socket.off('match_end');
             socket.disconnect();
         };
     }, [currentUserId]);
 
-    const startCountdown = () => {
-        setCountdown(3);
-        const timer = setInterval(() => {
-            setCountdown(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    setMatchState('playing');
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
+    const handleChallenge = (friend: Friend) => {
+        socket.emit('send_challenge', { to_user_id: friend.id, from_user_name: currentUserName });
     };
 
-    // Actions
-    const handleFindMatch = () => {
-        setMatchState('searching');
-        // Giả lập tìm thấy đối thủ sau 2s
-        setTimeout(() => {
-            setOpponentId("User_Binh");
-            setMatchState('found');
-        }, 2000);
+    const handleAccept = (challenge: IncomingChallenge) => {
+        socket.emit('accept_challenge', { user_a_id: currentUserId, user_b_id: challenge.fromId });
+        setIncoming((prev) => prev.filter((c) => c.fromId !== challenge.fromId));
     };
 
-    const handleAcceptMatch = () => {
-        // Gửi accept_challenge tới Backend (A & B)
-        socket.emit('accept_challenge', { user_a_id: currentUserId, user_b_id: opponentId });
-    };
-
-    const handleMockSubmitAnswer = (isCorrect: boolean) => {
-        if (matchState !== 'playing' || !roomId) return;
-
-        if (isCorrect) {
-            const newScore = myScore + 1;
-            setMyScore(newScore);
-            socket.emit('submit_answer', { room_id: roomId, user_id: currentUserId, is_correct: true, timestamp: Date.now() });
-
-            if (newScore >= TOTAL_QUESTIONS) {
-                // Send finish to backend
-                socket.emit('match_result', { room_id: roomId, user_id: currentUserId, total_points: newScore, timestamp: Date.now() });
-            }
-        }
+    const handleDecline = (challenge: IncomingChallenge) => {
+        setIncoming((prev) => prev.filter((c) => c.fromId !== challenge.fromId));
     };
 
     return (
-        <div className="flex flex-col h-full w-full max-w-sm mx-auto items-center relative bg-white">
-
-            <div className="pb-6 pt-2 border-b border-stone-100 flex items-center justify-between mb-6 w-full">
+        <div className="flex flex-col h-full w-full items-stretch bg-white">
+            {/* Header */}
+            <div className="pb-4 pt-2 border-b border-stone-100 flex items-center justify-between mb-4">
                 <div>
-                    <h2 className="font-bold text-stone-900 text-2xl tracking-tight">Khu Mạng Lưới</h2>
-                    <p className="text-stone-500 text-sm font-medium">Học cùng dân làng</p>
+                    <h2 className="font-bold text-stone-900 text-2xl tracking-tight">Cộng đồng Ba Na</h2>
+                    <p className="text-stone-500 text-sm font-medium">
+                        Kết bạn, thách đấu và cùng luyện tập
+                    </p>
+                </div>
+                <div className="hidden md:flex flex-col items-end text-right">
+                    <span className="text-xs text-stone-400 font-semibold">Tài khoản</span>
+                    <span className="text-sm font-bold text-stone-800 max-w-[160px] truncate">{currentUserName}</span>
+                    <span className="text-[11px] text-emerald-600 font-semibold">
+                        {levelFromXp(currentXp)} · {currentXp} XP
+                    </span>
                 </div>
             </div>
 
-            {/* Màn hình Chờ */}
-            {matchState === 'idle' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full flex flex-col gap-6">
-                    {/* Blue Server Goal Card */}
-                    <div className="bg-stone-900 text-white rounded-[2rem] p-6 shadow-xl shadow-stone-900/10">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-[17px] font-bold">Mục tiêu chung</h2>
-                            <span className="text-sm font-black text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full">1000 Từ</span>
-                        </div>
-                        <div className="relative h-4 bg-white/10 rounded-full overflow-hidden shrink-0 mt-6 mb-2">
-                            <motion.div initial={{ width: 0 }} animate={{ width: "75%" }} transition={{ duration: 1.5, ease: "easeOut" }} className="absolute top-0 bottom-0 left-0 bg-orange-500 rounded-full" />
-                        </div>
-                        <div className="flex justify-between font-mono text-[12px] text-white/50 font-bold">
-                            <span>0</span>
-                            <span>750/1000</span>
-                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-2">
+                {/* Friends list + Đôi bạn cùng tiến */}
+                <section className="bg-stone-50 rounded-3xl p-4 md:p-5 border border-stone-100 flex flex-col gap-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                            Bạn bè của bạn
+                        </h3>
+                        <span className="text-[11px] text-stone-500 font-semibold">
+                            {friends.length} bạn
+                        </span>
                     </div>
 
-                    {/* Battle CTA */}
-                    <button
-                        onClick={handleFindMatch}
-                        className="w-full relative overflow-hidden group bg-orange-50 hover:bg-orange-100 border-2 border-orange-200 rounded-[2rem] p-6 flex flex-col items-center gap-4 transition-colors"
-                    >
-                        <div className="w-16 h-16 bg-white shadow-md rounded-2xl flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
-                            <Sword className="w-8 h-8" />
-                        </div>
-                        <div className="text-center">
-                            <h3 className="text-lg font-bold text-orange-900">Thách đấu 1v1</h3>
-                            <p className="text-sm text-orange-600/70 font-medium mt-1">Tìm đối thủ cùng trình độ</p>
-                        </div>
-                    </button>
-
-                    {/* Friends Avatars */}
-                    <div className="flex justify-center gap-4 mt-2">
-                        {['An', 'Bình', 'Chi', 'Dũng'].map((name) => (
-                            <div key={name} className="flex flex-col items-center gap-2">
-                                <div className="w-12 h-12 bg-stone-100 rounded-full relative shadow-sm border-2 border-white flex items-center justify-center text-stone-400">
-                                    <User className="w-5 h-5" />
-                                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></div>
+                    <div className="space-y-3">
+                        {friends.map((f) => (
+                            <div
+                                key={f.id}
+                                className="flex items-center justify-between bg-white rounded-2xl px-3 py-2.5 border border-stone-100 shadow-sm"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-stone-100 border-2 border-white shadow-sm flex items-center justify-center relative">
+                                        <User className="w-5 h-5 text-stone-400" />
+                                        {f.online && (
+                                            <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-stone-800">{f.name}</p>
+                                        <p className="text-[11px] text-stone-500 font-semibold">
+                                            {levelFromXp(f.xp)} · {f.xp} XP · 🔥 {f.streak} ngày
+                                        </p>
+                                    </div>
                                 </div>
-                                <span className="text-[11px] font-bold text-stone-500">{name}</span>
+
+                                <button
+                                    onClick={() => handleChallenge(f)}
+                                    className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-orange-50 border border-orange-200 text-orange-600 hover:bg-orange-100 hover:border-orange-300 transition-colors"
+                                    title="Thách đấu"
+                                >
+                                    <Sword className="w-4 h-4" />
+                                </button>
                             </div>
                         ))}
+
+                        {friends.length === 0 && (
+                            <p className="text-sm text-stone-500 text-center py-4">
+                                Bạn chưa có bạn bè nào. Hãy thử gửi lời mời từ danh sách gợi ý nhé!
+                            </p>
+                        )}
                     </div>
-                </motion.div>
-            )}
 
-            {/* Màn hình Tìm đối thủ & Start */}
-            <AnimatePresence>
-                {matchState === 'searching' && (
-                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center h-64 text-center">
-                        <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4" />
-                        <h3 className="text-xl font-bold text-stone-900">Đang dò tìm...</h3>
-                        <p className="text-stone-500 mt-2">Tìm kiếm đối thủ Level {isAdvancedLevel ? "A1" : "A2"}</p>
-                    </motion.div>
-                )}
-
-                {matchState === 'found' && (
-                    <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="flex flex-col items-center w-full mt-10">
-                        <h3 className="text-2xl font-black text-stone-900 mb-8">Đối thủ xuất hiện!</h3>
-                        <div className="flex items-center gap-6 mb-12">
-                            <div className="flex flex-col items-center text-center">
-                                <div className="w-20 h-20 bg-stone-100 border-4 border-stone-900 rounded-full mb-3 flex items-center justify-center text-stone-400"><User className="w-8 h-8" /></div>
-                                <span className="font-bold text-stone-900">{currentUserName}</span>
-                            </div>
-                            <div className="text-orange-500 font-black text-3xl italic">VS</div>
-                            <div className="flex flex-col items-center text-center">
-                                <div className="w-20 h-20 bg-orange-100 border-4 border-orange-500 rounded-full mb-3 flex items-center justify-center text-orange-500"><User className="w-8 h-8" /></div>
-                                <span className="font-bold text-orange-700">{opponentId}</span>
+                    {/* Đôi bạn cùng tiến: theo dõi mục tiêu chung */}
+                    <div className="mt-4 rounded-2xl bg-white border border-emerald-100 p-3 md:p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                                    <HeartHandshake className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-emerald-900 uppercase tracking-wide">
+                                        Đôi bạn cùng tiến
+                                    </p>
+                                    <p className="text-[11px] text-emerald-700 font-semibold">
+                                        Mục tiêu hôm nay: mỗi người hoàn thành {buddyTarget} bài
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                        <button onClick={handleAcceptMatch} className="w-full bg-stone-900 hover:bg-black text-white py-4 rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all">
-                            Chấp nhận thách đấu
-                        </button>
-                    </motion.div>
-                )}
 
-                {matchState === 'countdown' && (
-                    <motion.div initial={{ scale: 2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex h-64 items-center justify-center">
-                        <span className="text-[8rem] font-black text-orange-500">{countdown}</span>
-                    </motion.div>
-                )}
-
-                {/* Màn hình Chơi (Tiến trình đồng bộ Real-time) */}
-                {matchState === 'playing' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full flex flex-col gap-8 mt-4">
-                        <div className="flex flex-col gap-6 p-6 bg-stone-50 rounded-[2rem] border border-stone-200">
-                            {/* My Progress */}
+                        <div className="space-y-3 mt-2">
                             <div>
-                                <div className="flex justify-between font-bold text-sm mb-2 text-stone-900">
+                                <div className="flex justify-between text-[11px] font-semibold text-stone-600 mb-1">
                                     <span>{currentUserName} (Bạn)</span>
-                                    <span>{myScore} / {TOTAL_QUESTIONS}</span>
+                                    <span>
+                                        {buddyProgress.you}/{buddyTarget} bài
+                                    </span>
                                 </div>
-                                <div className="h-4 bg-stone-200 rounded-full overflow-hidden">
-                                    <motion.div className="h-full bg-emerald-500" animate={{ width: `${(myScore / TOTAL_QUESTIONS) * 100}%` }} transition={{ type: "spring" }} />
+                                <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-emerald-500"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(Math.min(buddyProgress.you, buddyTarget) / buddyTarget) * 100}%` }}
+                                        transition={{ duration: 0.6 }}
+                                    />
                                 </div>
                             </div>
-                            {/* Opponent Progress */}
+
                             <div>
-                                <div className="flex justify-between font-bold text-sm mb-2 text-orange-700">
-                                    <span>{opponentId}</span>
-                                    <span>{opponentScore} / {TOTAL_QUESTIONS}</span>
+                                <div className="flex justify-between text-[11px] font-semibold text-stone-600 mb-1">
+                                    <span>{buddyProgress.friendName}</span>
+                                    <span>
+                                        {buddyProgress.friend}/{buddyTarget} bài
+                                    </span>
                                 </div>
-                                <div className="h-4 bg-orange-100 rounded-full overflow-hidden">
-                                    <motion.div className="h-full bg-orange-500" animate={{ width: `${(opponentScore / TOTAL_QUESTIONS) * 100}%` }} transition={{ type: "spring" }} />
+                                <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+                                    <motion.div
+                                        className="h-full bg-amber-400"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(Math.min(buddyProgress.friend, buddyTarget) / buddyTarget) * 100}%` }}
+                                        transition={{ duration: 0.6 }}
+                                    />
                                 </div>
                             </div>
                         </div>
 
-                        {/* MOCK GAMEPLAY */}
-                        <div className="bg-white p-6 border-2 border-stone-100 rounded-[2rem] shadow-sm text-center">
-                            <p className="font-bold text-lg mb-6">Câu hỏi #{myScore + 1}</p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <button onClick={() => handleMockSubmitAnswer(true)} className="bg-stone-100 py-4 rounded-xl font-bold hover:bg-stone-200">Đúng</button>
-                                <button onClick={() => handleMockSubmitAnswer(false)} className="bg-stone-100 py-4 rounded-xl font-bold hover:bg-stone-200">Sai</button>
-                            </div>
+                        <div className="mt-3 text-[11px] font-semibold text-stone-500 flex flex-col gap-1">
+                            <span>
+                                🎁 Nếu <span className="text-emerald-700">cả hai đều đạt</span>: +30 Sao Vàng cho mỗi bạn.
+                            </span>
+                            <span>
+                                😅 Nếu <span className="text-rose-600">một trong hai không đạt</span>: mất 1 ngày streak của cả cặp.
+                            </span>
                         </div>
-                    </motion.div>
-                )}
+                    </div>
+                </section>
 
-                {/* Màn hình Kết Quả */}
-                {matchState === 'finished' && (
-                    <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center mt-12 w-full text-center">
-                        <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center text-orange-500 mb-6">
-                            <Trophy className="w-12 h-12" />
+                {/* Suggestions & incoming challenges */}
+                <section className="flex flex-col gap-4">
+                    {/* Incoming challenges */}
+                    <div className="bg-emerald-50 rounded-3xl p-4 md:p-5 border border-emerald-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-black text-emerald-900 uppercase tracking-wide">
+                                Lời thách đấu đến
+                            </h3>
                         </div>
-                        <h2 className="text-3xl font-black text-stone-900 mb-2">
-                            {winner === currentUserId ? "CHIẾN THẮNG!" : "THẤT BẠI!"}
-                        </h2>
-                        <p className="text-stone-500 font-medium mb-8">
-                            {winner === currentUserId ? "+50 Sao Vàng" : "Chúc bạn may mắn lần sau"}
-                        </p>
-                        <button onClick={() => setMatchState('idle')} className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold text-lg">
-                            Trở về Phòng Cộng đồng
-                        </button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+
+                        {incoming.length === 0 ? (
+                            <p className="text-sm text-emerald-800/80">
+                                Chưa có ai thách đấu bạn. Khi có lời mời, bạn sẽ thấy ở đây.
+                            </p>
+                        ) : (
+                            <div className="space-y-3">
+                                {incoming.map((c) => (
+                                    <div
+                                        key={c.fromId}
+                                        className="flex items-center justify-between bg-white/60 rounded-2xl px-3 py-2.5 border border-emerald-100"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-emerald-500">
+                                                <Sword className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-emerald-900">
+                                                    {c.fromName}
+                                                </p>
+                                                <p className="text-[11px] text-emerald-800/80 font-semibold">
+                                                    muốn thách đấu 1v1 với bạn
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => handleDecline(c)}
+                                                className="px-3 py-1.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
+                                            >
+                                                Từ chối
+                                            </button>
+                                            <button
+                                                onClick={() => handleAccept(c)}
+                                                className="px-3 py-1.5 rounded-full text-[11px] font-semibold bg-emerald-600 text-white border border-emerald-700 hover:bg-emerald-700"
+                                            >
+                                                Chấp nhận
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Friend suggestions */}
+                    <div className="bg-white rounded-3xl p-4 md:p-5 border border-stone-100 flex-1 flex flex-col">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-black text-stone-900 uppercase tracking-wide">
+                                Gợi ý kết bạn (EXP gần bạn)
+                            </h3>
+                        </div>
+
+                        <div className="space-y-3">
+                            {suggestions.map((s) => (
+                                <div
+                                    key={s.id}
+                                    className="flex items-center justify-between bg-stone-50 rounded-2xl px-3 py-2.5 border border-stone-100"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-stone-500 border border-stone-200">
+                                            <User className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-stone-800">{s.name}</p>
+                                            <p className="text-[11px] text-stone-500 font-semibold">
+                                                {levelFromXp(s.xp)} · {s.xp} XP · 🔥 {s.streak} ngày
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleChallenge(s)}
+                                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-orange-50 border border-orange-200 text-orange-600 hover:bg-orange-100 hover:border-orange-300 transition-colors"
+                                            title="Thách đấu"
+                                        >
+                                            <Sword className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Last result badge */}
+                    {lastMatchResult && (
+                        <div className="flex items-center gap-2 text-xs text-stone-500 mt-1">
+                            <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
+                                <Trophy className="w-3 h-3" />
+                            </div>
+                            <span className="font-semibold">
+                                Kết quả gần nhất:{" "}
+                                <span className={lastMatchResult === 'win' ? 'text-emerald-600' : 'text-rose-500'}>
+                                    {lastMatchResult === 'win' ? 'Bạn đã thắng!' : 'Bạn thua, thử lại nhé!'}
+                                </span>
+                            </span>
+                        </div>
+                    )}
+                </section>
+            </div>
         </div>
     );
 }
