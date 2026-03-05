@@ -33,13 +33,13 @@ export const fetchWithMonitor = async <T>(
     url: string,
     options: RequestInit = {},
     cacheKey?: string,
-    maxLatencyMs: number = 3000 // Sau 3s nếu không phản hồi thì ép lấy cache nếu có
+    maxLatencyMs: number = 15000 // Sau 15s nếu không phản hồi thì ép lấy cache hoặc ném lỗi (render free tier wake up có thể chậm)
 ): Promise<T> => {
     const startTime = performance.now();
     // Tính năng Fail-safe/Fallback
     const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-            reject(new Error('TIMEOUT_LATENCY_EXCEEDED'));
+            reject(new Error('TIMEOUT_LATENCY_EXCEEDED: Máy chủ đang khởi động hoặc quá tải, vui lòng thử lại sau giây lát.'));
         }, maxLatencyMs);
     });
 

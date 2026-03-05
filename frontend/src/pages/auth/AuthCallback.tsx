@@ -37,7 +37,7 @@ export function AuthCallback() {
                         body: JSON.stringify({ token: accessToken }),
                     },
                     undefined,
-                    10000
+                    60000 // Cho phép chờ tối đa 60 giây vì Render free tier có thể mất 50s để wake up
                 );
 
                 const payload = 'user' in response ? response : response.data;
