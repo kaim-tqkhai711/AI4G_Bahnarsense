@@ -25,11 +25,29 @@ export class AiController extends BaseController {
             if (!uid) throw new Error('User context missing');
 
             const payload = chatSpeakSchema.parse(req.body);
-            const result = await this.aiService.chatSpeak(uid, payload.topic_id, payload.audio_base64, payload.stt_text);
+            const result = await this.aiService.chatSpeak(uid, payload.topic_id, payload.audio_base64, payload.mime_type, payload.stt_text);
 
             this.handleSuccess(res, result);
         } catch (error) {
             this.handleError(error, res, 'AiController.chatSpeak');
+        }
+    }
+
+    async scorePronunciation(req: Request, res: Response): Promise<void> {
+        try {
+            const uid = req.user?.id;
+            if (!uid) throw new Error('User context missing');
+
+            const { audioBase64, mimeType, expectedText } = req.body;
+            if (!audioBase64 || !expectedText) {
+                res.status(400).json({ success: false, error: 'Missing audio or expected text' });
+                return;
+            }
+
+            const result = await this.aiService.scorePronunciation(uid, audioBase64, mimeType, expectedText);
+            this.handleSuccess(res, result);
+        } catch (error) {
+            this.handleError(error, res, 'AiController.scorePronunciation');
         }
     }
 }

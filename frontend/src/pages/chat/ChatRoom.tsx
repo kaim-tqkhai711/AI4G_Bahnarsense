@@ -3,6 +3,7 @@ import { Mic, RefreshCw, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { triggerWinBurst } from '../../lib/confetti';
 import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
+import { useUserStore } from '../../store/useUserStore';
 
 type Message = {
     id: string;
@@ -23,10 +24,13 @@ const INITIAL_MESSAGES: Message[] = [
 ];
 
 export function ChatRoom() {
+    const { token } = useUserStore();
     const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,44 +40,91 @@ export function ChatRoom() {
         scrollToBottom();
     }, [messages]);
 
-    const handleHoldStart = () => {
-        setIsRecording(true);
-        // Ở môi trường thật, sẽ gọi navigator.mediaDevices.getUserMedia()
-    };
+    const handleHoldStart = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            audioChunksRef.current = [];
 
-    const handleHoldEnd = () => {
-        setIsRecording(false);
-        if (!isProcessing) {
-            handleProcessAI("Nhen yau, kơ mưi sư!"); // Mock kết quả Speech-to-text
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorderRef.current.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                stream.getTracks().forEach(track => track.stop());
+                await handleProcessAI(audioBlob);
+            };
+
+            mediaRecorderRef.current.start();
+            setIsRecording(true);
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            alert('Vui lòng cấp quyền sử dụng Micro cho trình duyệt!');
         }
     };
 
-    const handleProcessAI = async (voiceText: string) => {
+    const handleHoldEnd = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const handleProcessAI = async (audioBlob: Blob) => {
         setIsProcessing(true);
 
-        const userMsg: Message = { id: Date.now().toString(), text: voiceText, isAi: false };
+        // Chuyển blob thành Base64
+        const base64Audio = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64data = reader.result?.toString().split(',')[1] || '';
+                resolve(base64data);
+            };
+            reader.readAsDataURL(audioBlob);
+        });
+
+        // Tạm thời hiển thị tin nhắn user là voice message icon
+        const userMsg: Message = { id: Date.now().toString(), text: "🎤 Đã gửi một tin nhắn thoại...", isAi: false };
         setMessages(prev => [...prev, userMsg]);
 
         try {
-            // Demo API tích hợp bộ đo Latency /monitor.ts
-            const response = await fetchWithMonitor<{ reply?: string, accuracy?: number }>(
-                'http://localhost:8000/api/ai/chat/speak',
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const response = await fetchWithMonitor<{ data: { stt_recognized?: string, evaluation?: { response_bhn?: string, vietnamese_translation?: string, accuracy?: number }, passed?: boolean } } | any>(
+                `${API_URL}/api/v1/ai/chat/speak`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: voiceText })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        topic_id: "general_greeting",
+                        audio_base64: base64Audio,
+                        mime_type: audioBlob.type
+                    })
                 },
                 'genai_last_response',
-                4000 // 4 seconds timeout
+                15000 // 15 seconds timeout
             );
+
+            const dataResult = response?.data || response;
+            const evalData = dataResult?.evaluation || {};
 
             const aiFeedback: Message = {
                 id: (Date.now() + 1).toString(),
-                text: response.reply || 'Tuyệt vời. Bạn làm tốt lắm!',
+                text: evalData.response_bhn || 'Tuyệt vời. Bạn làm tốt lắm!',
                 isAi: true,
-                translation: 'Response fallback from AI',
-                accuracy: response.accuracy || (Math.random() > 0.5 ? 85 : 60)
+                translation: evalData.vietnamese_translation || 'Response fallback from AI',
+                accuracy: evalData.accuracy || 100
             };
+
+            // Update user message to real text if STT is available
+            if (dataResult.stt_recognized) {
+                setMessages(prev => prev.map(m => m.id === userMsg.id ? { ...m, text: dataResult.stt_recognized } : m));
+            }
             setMessages(prev => [...prev, aiFeedback]);
 
             if (aiFeedback.accuracy && aiFeedback.accuracy >= 80) {

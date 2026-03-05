@@ -19,4 +19,7 @@ router.get('/pronounce', asyncErrorWrapper(controller.pronounce.bind(controller)
 // POST /api/v1/ai/chat/speak
 router.post('/chat/speak', asyncErrorWrapper(controller.chatSpeak.bind(controller)));
 
+// POST /api/v1/ai/score-pronunciation
+router.post('/score-pronunciation', asyncErrorWrapper(controller.scorePronunciation.bind(controller)));
+
 export default router;

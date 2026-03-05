@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, Volume2, Star, Check } from 'lucide-react';
+import { X, ChevronLeft, Volume2, Star, Check, Mic, Loader2 } from 'lucide-react';
 import { triggerConfetti } from '../../lib/confetti';
-
-// MOCK TRUYỆN CMS - Cấu trúc dữ liệu có chứa 'words' map
+import { useUserStore } from '../../store/useUserStore';
+import { fetchWithMonitor } from '../../lib/monitor';
 type DictionaryEntry = {
     meaning: string;
     audioUrl: string;
@@ -89,6 +89,14 @@ export function StoriesRoom() {
 function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void }) {
     const [selectedWord, setSelectedWord] = useState<string | null>(null);
     const [savedWords, setSavedWords] = useState<string[]>([]);
+    const { token } = useUserStore();
+
+    // Audio states
+    const [isRecording, setIsRecording] = useState(false);
+    const [isScoring, setIsScoring] = useState(false);
+    const [scoreResult, setScoreResult] = useState<{ score: number, feedback: string } | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
 
     // Tách chuỗi thành mảng các từ, ưu tiên cụm từ trong từ điển (Mock logic: Split by space)
     // Ở bản Real: Ta sẽ map content bằng Regex tìm match key keys(dictionary).
@@ -101,9 +109,11 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
         // Lookup
         if (story.dictionary[cleanWord]) {
             setSelectedWord(cleanWord);
+            setScoreResult(null); // reset score when clicking a new word
         } else if (story.dictionary["Bơ tơ̆k đe đe"] && wordRaw.includes("Bơ")) {
             // Giả lập click vào cụm từ
             setSelectedWord("Bơ tơ̆k đe đe");
+            setScoreResult(null);
         } else {
             setSelectedWord(null);
         }
@@ -114,6 +124,82 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
             setSavedWords(prev => [...prev, selectedWord]);
             // Thực tế: POST /review/log_error với word này để vào Spaced Repetition
             triggerConfetti();
+        }
+    };
+
+    const handleHoldStart = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            audioChunksRef.current = [];
+
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorderRef.current.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                stream.getTracks().forEach(track => track.stop());
+                await processAudio(audioBlob);
+            };
+
+            mediaRecorderRef.current.start();
+            setIsRecording(true);
+            setScoreResult(null);
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            alert('Vui lòng cấp quyền sử dụng Micro cho trình duyệt!');
+        }
+    };
+
+    const handleHoldEnd = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const processAudio = async (blob: Blob) => {
+        setIsScoring(true);
+        try {
+            const base64Audio = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64data = reader.result?.toString().split(',')[1] || '';
+                    resolve(base64data);
+                };
+                reader.readAsDataURL(blob);
+            });
+
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const response = await fetchWithMonitor<{ score: number, feedback: string } | { data: { score: number, feedback: string } }>(
+                `${API_URL}/api/v1/ai/score-pronunciation`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        audioBase64: base64Audio,
+                        mimeType: blob.type,
+                        expectedText: selectedWord
+                    })
+                },
+                undefined,
+                15000
+            );
+
+            const result = 'score' in response ? response : response.data;
+            setScoreResult({ score: result.score, feedback: result.feedback });
+            if (result.score >= 80) triggerConfetti();
+        } catch (error) {
+            console.error(error);
+            setScoreResult({ score: 0, feedback: 'Kết nối kém hoặc có lỗi. Xin thử lại.' });
+        } finally {
+            setIsScoring(false);
         }
     };
 
@@ -182,15 +268,29 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                                 </button>
                             </div>
 
-                            <div className="flex items-center gap-3 mt-8">
-                                <button className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white py-3.5 rounded-2xl font-bold hover:bg-stone-800 transition-colors">
+                            <div className="flex items-center justify-between gap-3 mt-6">
+                                <button className="flex-1 flex items-center justify-center gap-2 bg-stone-100 text-stone-900 py-3.5 rounded-2xl font-bold hover:bg-stone-200 transition-colors">
                                     <Volume2 className="w-5 h-5" />
-                                    Nghe phát âm
+                                    Nghe mẫu
+                                </button>
+
+                                <button
+                                    onMouseDown={handleHoldStart}
+                                    onMouseUp={handleHoldEnd}
+                                    onTouchStart={handleHoldStart}
+                                    onTouchEnd={handleHoldEnd}
+                                    disabled={isScoring}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold transition-all relative ${isScoring ? 'bg-stone-200 text-stone-400 cursor-not-allowed' :
+                                        isRecording ? 'bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] scale-105' : 'bg-stone-900 text-white hover:bg-stone-800'
+                                        }`}
+                                >
+                                    {isScoring ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                                    {isScoring ? 'Đang chấm...' : isRecording ? 'Đang thu âm' : 'Giữ để đọc'}
                                 </button>
 
                                 <button
                                     onClick={handleSaveWord}
-                                    className={`w-14 h-14 flex items-center justify-center rounded-2xl border-2 transition-all ${savedWords.includes(selectedWord)
+                                    className={`w-14 h-14 flex flex-shrink-0 items-center justify-center rounded-2xl border-2 transition-all ${savedWords.includes(selectedWord)
                                         ? 'bg-orange-50 border-orange-500 text-orange-500'
                                         : 'border-stone-200 text-stone-400 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-500'
                                         }`}
@@ -199,7 +299,22 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                                 </button>
                             </div>
 
-                            {!savedWords.includes(selectedWord) && (
+                            {/* Kết quả chấm điểm AI */}
+                            {scoreResult && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={`mt-4 p-4 rounded-2xl border ${scoreResult.score >= 80 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-bold text-sm">Điểm phát âm:</span>
+                                        <span className="font-black text-lg">{scoreResult.score}%</span>
+                                    </div>
+                                    <p className="text-sm font-medium">{scoreResult.feedback}</p>
+                                </motion.div>
+                            )}
+
+                            {!savedWords.includes(selectedWord) && !scoreResult && (
                                 <p className="text-center text-xs text-stone-400 font-medium mt-4">
                                     *Lưu từ vựng này vào Phòng Củng Cố
                                 </p>

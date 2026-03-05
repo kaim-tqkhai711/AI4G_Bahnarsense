@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Sword, Trophy, User, HeartHandshake } from 'lucide-react';
+import { Sword, Trophy, User, HeartHandshake, Search, UserPlus } from 'lucide-react';
 import { socket } from '../../lib/socket';
 import { triggerWinBurst } from '../../lib/confetti';
 import { useUserStore } from '../../store/useUserStore';
+import { fetchWithMonitor } from '../../lib/monitor';
 
 type Friend = {
     id: string;
@@ -27,13 +28,19 @@ function levelFromXp(xp: number): string {
 }
 
 export function CommunityRoom() {
-    const { user } = useUserStore();
+    const { user, token } = useUserStore();
     const currentUserId = user?.id || 'guest';
     const currentUserName = user?.name || 'Khách';
     const currentXp = user?.xp || 0;
 
     const [incoming, setIncoming] = useState<IncomingChallenge[]>([]);
     const [lastMatchResult, setLastMatchResult] = useState<'win' | 'lose' | null>(null);
+
+    // Search Friend State
+    const [searchId, setSearchId] = useState('');
+    const [searchResult, setSearchResult] = useState<Friend | null>(null);
+    const [isSearching, setIsSearching] = useState(false);
+
     // Đôi bạn cùng tiến: target số bài trong ngày (mock dữ liệu)
     const buddyTarget = 3;
     const buddyProgress = {
@@ -101,6 +108,55 @@ export function CommunityRoom() {
 
     const handleDecline = (challenge: IncomingChallenge) => {
         setIncoming((prev) => prev.filter((c) => c.fromId !== challenge.fromId));
+    };
+
+    const handleSearchFriend = async () => {
+        if (!searchId.trim()) return;
+        setIsSearching(true);
+        setSearchResult(null);
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const res = await fetchWithMonitor<{ data: any }>(
+                `${API_URL}/api/v1/community/friends/search?user_id=${searchId.trim()}`,
+                {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }
+            );
+            const foundUser = res.data;
+            setSearchResult({
+                id: foundUser.id,
+                name: foundUser.username || foundUser.name || 'Người dùng',
+                xp: foundUser.xp || 0,
+                streak: foundUser.streak || 0,
+                online: false // Mock cho MVP
+            });
+        } catch (e) {
+            alert('Không tìm thấy người dùng với ID này!');
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const handleAddFriend = async (id: string) => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            await fetchWithMonitor(
+                `${API_URL}/api/v1/community/friends/add`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ friend_id: id })
+                }
+            );
+            alert('Đã gửi yêu cầu kết bạn thành công!');
+            setSearchResult(null);
+            setSearchId('');
+        } catch (e: any) {
+            alert(e.message || 'Có lỗi xảy ra khi kết bạn!');
+        }
     };
 
     return (
@@ -239,6 +295,51 @@ export function CommunityRoom() {
 
                 {/* Suggestions & incoming challenges */}
                 <section className="flex flex-col gap-4">
+                    {/* Add Friend Input */}
+                    <div className="bg-white rounded-3xl p-4 md:p-5 border border-stone-100 shadow-sm">
+                        <h3 className="text-sm font-black text-stone-900 uppercase tracking-wide mb-3">Thêm bạn mới</h3>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                placeholder="Nhập ID người dùng (VD: user-123)..."
+                                value={searchId}
+                                onChange={(e) => setSearchId(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSearchFriend()}
+                                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-stone-300 focus:bg-white transition-colors"
+                            />
+                            <button
+                                onClick={handleSearchFriend}
+                                disabled={isSearching || !searchId.trim()}
+                                className="bg-stone-900 text-white p-2 px-4 rounded-xl flex items-center justify-center font-bold text-sm hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                            >
+                                {isSearching ? 'Đang tìm...' : <Search className="w-4 h-4" />}
+                            </button>
+                        </div>
+                        {searchResult && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="mt-3 p-3 bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-between"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-stone-500 shadow-sm border border-stone-200">
+                                        <User className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-stone-800 line-clamp-1 max-w-[120px]">{searchResult.name}</p>
+                                        <p className="text-[10px] text-stone-500 font-semibold">{levelFromXp(searchResult.xp)}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleAddFriend(searchResult.id)}
+                                    className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-200 flex items-center gap-1 transition-colors"
+                                >
+                                    <UserPlus className="w-3.5 h-3.5" /> Kết bạn
+                                </button>
+                            </motion.div>
+                        )}
+                    </div>
+
                     {/* Incoming challenges */}
                     <div className="bg-emerald-50 rounded-3xl p-4 md:p-5 border border-emerald-100">
                         <div className="flex items-center justify-between mb-3">

@@ -23,4 +23,21 @@ export class CommunityService {
 
         return { match_level: searchLevel, available_opponents: list };
     }
+
+    async searchFriend(searchId: string) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id, username, level, xp, streak')
+            .eq('id', searchId)
+            .single();
+        if (error || !data) throw new Error('Không tìm thấy người dùng này.');
+        return data;
+    }
+
+    async addFriend(uid: string, friendId: string) {
+        if (uid === friendId) throw new Error('Không thể tự kết bạn với chính mình.');
+        // Thêm bạn thành công cho MVP (giả lập thao tác DB)
+        // Nếu có bảng 'friends' thì thực hiện chèn dữ liệu tại đây
+        return { success: true, message: 'Gửi yêu cầu kết bạn thành công!' };
+    }
 }

@@ -23,16 +23,15 @@ export class AiService {
     /**
      * Tính năng POST /ai/chat/speak
      */
-    async chatSpeak(uid: string, topicId: string, audioBase64?: string, sttText?: string) {
+    async chatSpeak(uid: string, topicId: string, audioBase64?: string, mimeType?: string, sttText?: string) {
 
         // B1: Xử lý Speech-To-Text nếu Client gửi Audio.
-        // (Vì giới hạn STT tiếng Ba-Na rất khó, MVP nên để FRONT-END xài Web Speech API ra text trươc
-        // hoặc Backend gọi 1 service nội bộ. Ở đây ta ưu tiên xài sttText nếu có).
-
-        const textToEvaluate = sttText || "Nội dung mặc định do chưa tích hợp STT Backend";
-
         // B2: Chuyển dữ liệu vào Gemini
-        const geminiResult = await this.geminiService.evaluatePronunciation(textToEvaluate, topicId);
+
+        let textToEvaluate = sttText || "";
+
+        // Cải tiến: Nếu có Audio Base64, gửi thẳng vào Multimodal Gemini để nó vừa nghe vừa đánh giá.
+        const geminiResult = await this.geminiService.evaluatePronunciation(textToEvaluate, topicId, audioBase64, mimeType);
 
         // B3: Auto Trigger Log Data (sẽ làm ở Nhóm 4 - Spaced Repetition)
         if (geminiResult.accuracy < 80) {
@@ -43,6 +42,18 @@ export class AiService {
             stt_recognized: textToEvaluate,
             evaluation: geminiResult,
             passed: geminiResult.accuracy >= 80
+        };
+    }
+
+    /**
+     * Tính năng POST /ai/score-pronunciation
+     */
+    async scorePronunciation(uid: string, audioBase64: string, mimeType: string, expectedText: string) {
+        const geminiResult = await this.geminiService.scorePronunciation(audioBase64, mimeType, expectedText);
+
+        return {
+            score: geminiResult.score || 0,
+            feedback: geminiResult.feedback || "Cố gắng lên nhé!"
         };
     }
 }

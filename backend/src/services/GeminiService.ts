@@ -6,30 +6,81 @@ const ai = new GoogleGenAI({ apiKey: config.ai.geminiApiKey });
 
 export class GeminiService {
     /**
-     * Truyền Text thu được từ STT vào đóng vai giáo viên chấm điểm.
+     * Tương tác bằng Giọng nói (STT + LLM kết hợp qua Multimodal) hoặc Text
      */
-    async evaluatePronunciation(text: string, topic: string) {
-        const prompt = `
-Bạn là giáo viên dạy tiếng Ba Na nghiêm khắc nhưng tận tâm. 
-Học sinh vừa nói câu liên quan đến chủ đề: "${topic}".
-Nội dung hệ thống STT nhận diện được từ giọng học sinh là: "${text}".
+    async evaluatePronunciation(text: string, topic: string, audioBase64?: string, mimeType?: string) {
+        let systemPrompt = `Bạn là giáo viên dạy tiếng Ba Na nghiêm khắc nhưng tận tâm.
+Học sinh đang trò chuyện về chủ đề: "${topic}".`;
 
+        if (text) {
+            systemPrompt += `\nNgười dùng đã nói câu: "${text}".`;
+        }
+
+        systemPrompt += `
 Nhiệm vụ của bạn:
-1. Đánh giá tính chính xác ngữ pháp và từ vựng của câu trên theo thang điểm từ 0 đến 100%.
-2. Phản hồi lại học sinh bằng Tiếng Ba Na (Kèm dịch tiếng Việt trong ngoặc vuông [] ở câu tiếp theo).
+1. Đánh giá tính chính xác về cách nói/phát âm/ngữ pháp theo thang điểm từ 0 đến 100%. (Hãy thông cảm nếu lỗi nhỏ).
+2. Phản hồi đối đáp lại câu của học sinh bằng Tiếng Ba Na (Kèm dịch tiếng Việt trong ngoặc vuông [] ở ngay sau).
 
-Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không render markdown block rác):
+Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không có markdown text):
 {
   "accuracy": <number>,
   "response_bhn": "<câu trút/động viên tiếng ba na>",
   "vietnamese_translation": "[<dịch nghĩa tiếng việt>]",
   "feedback": "<nhận xét ngắn gọn>"
-}
-    `;
+}`;
+
+        const parts: any[] = [{ text: systemPrompt }];
+
+        if (audioBase64 && mimeType) {
+            parts.unshift({
+                inlineData: { data: audioBase64, mimeType: mimeType }
+            });
+        }
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // hoặc gemini-3-flash nếu bạn access được
-            contents: prompt,
+            model: 'gemini-2.5-flash',
+            contents: [
+                { role: 'user', parts: parts }
+            ],
+            config: {
+                responseMimeType: 'application/json',
+            }
+        });
+
+        try {
+            const textRes = response.text || "{}";
+            return JSON.parse(textRes);
+        } catch (e) {
+            throw new Error('Gemini trả về format JSON không hợp lệ.');
+        }
+    }
+
+    /**
+     * Chấm điểm phát âm trực tiếp từ luồng Audio Base64.
+     */
+    async scorePronunciation(audioBase64: string, mimeType: string, expectedText: string) {
+        const prompt = `
+Bạn là giáo viên dạy tiếng Ba Na/Việt Nam.
+Học sinh vừa đọc từ/câu sau: "${expectedText}".
+Hãy lắng nghe đoạn âm thanh từ người dùng và đánh giá độ chính xác phát âm của họ so với từ/câu mẫu.
+Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY:
+{
+  "score": <number từ 0-100 tương ứng với độ chính xác>,
+  "feedback": "<nhận xét ngắn gọn, ví dụ: Rất tốt, hoặc Cần phát âm rõ âm 'x' hơn>"
+}
+`;
+        // Gemini 1.5 Flash hỗ trợ Multimodal audio
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { inlineData: { data: audioBase64, mimeType: mimeType } },
+                        { text: prompt }
+                    ]
+                }
+            ],
             config: {
                 responseMimeType: 'application/json',
             }
