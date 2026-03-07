@@ -117,4 +117,64 @@ Dự án áp dụng Design System rất linh hoạt và trực quan, sử dụng
 * **Micro-interactions**: Chú trọng sử dụng Framer Motion cho các tương tác nổi lên (Pop), thu nhỏ khi click (Scale down) mang lại trải nghiệm giống Ứng dụng Mobile Native (vd: Duolingo).
 
 ---
+## 🧠 Kiến trúc Hệ thống (System Architecture)
+
+Dựa trên tư duy hệ thống và kiến trúc giải pháp, tính năng cốt lõi của ứng dụng đánh giá phát âm thông minh được vận hành như sau:
+
+*   **Công nghệ AI sử dụng**: Ứng dụng sức mạnh của **Large Language Model (LLM)** đa phương thức (Multimodal), cụ thể là **Google Gemini 2.5 Flash**. Thay vì phải huấn luyện một mô hình CNN hay RNN nhận diện giọng nói (STT) từ đầu, ứng dụng sử dụng Gemini để vừa nghe (audio chunk), vừa đọc ngữ cảnh (prompt) và đưa ra đánh giá.
+*   **Quy trình vận hành**: 
+    1. **Input**: Dữ liệu giọng nói của học viên được thu qua micro trên Web/App (Trình duyệt) và mã hóa thành chuỗi `Base64` cùng với MIME Type tương ứng.
+    2. **Xử lý trung gian**: Gói dữ liệu chuyển tới Backend API. Tại đây, hệ thống tiêm thêm **System Prompt** chứa thông tin từ vựng tiếng Ba Na/Việt Nam đang học.
+    3. **AI Processing**: Gọi tới thư viện `@google/genai` (Gemini SDK). Mô hình Gemini tiếp nhận Audio + Text context tiến hành phân tích tính chính xác của âm sắc, từ vựng.
+    4. **Output**: Trả về một object JSON chứa điểm số (`score`/`accuracy`) và phản hồi (`feedback`).
+    5. **Hiển thị**: Frontend nhận dữ liệu JSON, phân tách và hiển thị lên màn hình cùng các hiệu ứng chúc mừng hoặc khích lệ.
+
+---
+
+## 📊 Chi tiết về dữ liệu (Dataset)
+
+Đây là phần quan trọng để đối chiếu với Bảng kiểm Đạo đức (Ethical AI Checklist):
+
+*   **Nguồn dữ liệu**: Dữ liệu từ vựng tiếng Ba Na (làm mẫu chuẩn) được đội ngũ phát triển và giáo viên địa phương cung cấp thủ công. Dữ liệu âm thanh là dữ liệu **tự thu âm trong thời gian thực (Real-time voice capture)** từ thiết bị của người dùng cuối (học sinh) để so khớp. Hệ thống không sử dụng dữ liệu cào (crawl) trái phép từ Internet.
+*   **Kích thước bộ dữ liệu**: 
+    * Ứng dụng thừa hưởng trí tuệ nhân tạo từ mô hình nền tảng khổng lồ của Google (Gemini).
+    * Bộ dữ liệu test kiểm thử (testing dataset) nội bộ bao gồm hàng trăm mẫu phát âm tiếng Ba Na được thu thập để kiểm tra tính chịu lỗi và tinh chỉnh Instruction prompt (few-shot prompting).
+*   **Đảm bảo đạo đức**: Trước khi sử dụng tính năng đánh giá phát âm, ứng dụng yêu cầu cấp quyền sử dụng Micro rõ ràng. Dữ liệu Base64 truyền đi được mã hóa qua môi trường kết nối an toàn nhưng **HOÀN TOÀN ẨN DANH VÀ KHÔNG ĐƯỢC LƯU TRỮ** tệp thô vào cơ sở dữ liệu (Firestore) nhằm tôn trọng quyền riêng tư gốc.
+
+---
+
+## ⚙️ Logic lập trình & Thuật toán (Core Logic)
+
+Thể hiện tư duy máy tính và khả năng phân rã bài toán:
+
+*   **Phân rã bài toán**: Luồng xử lý phân tách theo nguyên tắc Single Responsibility:
+    * Ở client, module Recorder Capture ghi âm và xuất ra định dạng nhẹ.
+    * Ở Server, Backend Controller điều hướng endpoint, chuyển giao cho Layer `GeminiService`. Layer này chỉ chịu trách nhiệm cấu trúc hóa Payload và Call AI.
+*   **Trừu tượng hóa**: 
+    * Tận dụng SDK `@google/genai` như một cỗ máy black box. 
+    * Trừu tượng hóa tính năng STT (Speech-to-Text) và Scoring phức tạp thành một lệnh gọi duy nhất `ai.models.generateContent` với role `user` và hai parameters: `inlineData` (Audio) và `text` (Context prompt).
+*   **Xử lý lỗi**: 
+    * Có cơ chế `try...catch` bọc việc parse JSON kết quả trả về. Nếu model rơi vào trạng thái ảo giác (hallucination), format sai lệch thay vì JSON -> Hệ thống ném lỗi cụ thể và dự phòng fallback text thân thiện thay vì làm server crash.
+
+---
+
+## 🚀 Kế hoạch triển khai kỹ thuật (Deployment Plan)
+
+*   **Trình tự thực hiện**: 
+    1. Nghiên cứu tài liệu Gemini Multimodal, lấy API key và thiết lập biến môi trường.
+    2. Viết class `GeminiService` trên Node.js xử lý việc injection Prompt theo từng Use Case (đánh giá phát âm, đối đáp hội thoại, nhắc nhở).
+    3. Thiết kế luồng Frontend dùng Web Audio API để luân chuyển gói chunk audio Base64 nhỏ nhẹ thay vì tập tin âm thanh nặng nề truyền thống.
+    4. Testing Tích hợp giữa Client và Server.
+*   **Tính tối ưu (Fine-Tuning)**: Đã tinh chỉnh **System prompt** (Prompt Engineering) chuyên sâu thay vì tinh chỉnh Weights Model nặng nề. Chọn model `gemini-2.5-flash` và thiết lập `responseMimeType: 'application/json'` nhằm tối ưu độ trễ xử lý (low-latency) nhanh nhất có thể, đáp ứng nhu cầu Gamification thời gian thực.
+
+---
+
+## ⚖️ Tự đánh giá về Đạo đức AI
+
+*   **Xác nhận tuân thủ**: Dự án tuân thủ toàn diện các nguyên tắc an toàn, không có thiên kiến và tính riêng tư trong Bảng kiểm đạo đức của Ban Tổ chức. Hệ thống minh bạch trong việc thu thập thông tin (chỉ nghe qua quyền cấp chủ động).
+*   **Giải thích kiểm soát rủi ro**:
+    * LLM được kiểm soát bằng quy tắc cứng mã hóa trong source code: `"Bạn là giáo viên dạy tiếng Ba Na nghiêm khắc nhưng tận tâm..."`. Việc này khoanh vùng phạm vi của luồng thông tin, ngăn chặn sinh ra nội dung độc hại, bạo lực hay vi phạm lề thói văn hóa.
+    * Cơ chế Ephemeral Architecture (Kiến trúc xử lý vô thường): Xóa dữ liệu Audio sinh trắc học ngay vào lúc kết thúc request đánh giá, chặn rủi ro dữ liệu bị lạm dụng cho Deepfake.
+
+---
 *Phát triển bởi đội ngũ kỹ sư Antigravity 🚀*
