@@ -11,3 +11,8 @@ yarn-error.log*
 *.log
 .idea/
 .vscode/
+
+# Python Virtual Env
+venv/
+backend/venv/
+__pycache__/

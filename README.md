@@ -177,4 +177,3 @@ Thể hiện tư duy máy tính và khả năng phân rã bài toán:
     * Cơ chế Ephemeral Architecture (Kiến trúc xử lý vô thường): Xóa dữ liệu Audio sinh trắc học ngay vào lúc kết thúc request đánh giá, chặn rủi ro dữ liệu bị lạm dụng cho Deepfake.
 
 ---
-*Phát triển bởi đội ngũ kỹ sư Antigravity 🚀*

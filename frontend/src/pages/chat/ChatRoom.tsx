@@ -92,7 +92,7 @@ export function ChatRoom() {
 
         try {
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            const response = await fetchWithMonitor<{ data: { stt_recognized?: string, evaluation?: { response_bhn?: string, vietnamese_translation?: string, accuracy?: number }, passed?: boolean } } | any>(
+            const response = await fetchWithMonitor<{ data: { stt_recognized?: string, evaluation?: { response_bhn?: string, vietnamese_translation?: string, accuracy?: number }, audio_base64?: string, passed?: boolean } } | any>(
                 `${API_URL}/api/v1/ai/chat/speak`,
                 {
                     method: 'POST',
@@ -129,6 +129,12 @@ export function ChatRoom() {
 
             if (aiFeedback.accuracy && aiFeedback.accuracy >= 80) {
                 triggerWinBurst();
+            }
+
+            // Auto-play TTS audio
+            if (dataResult.audio_base64) {
+                const audio = new Audio(dataResult.audio_base64);
+                audio.play().catch(e => console.error("Auto-play error", e));
             }
 
         } catch (err: unknown) {

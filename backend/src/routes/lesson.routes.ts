@@ -16,6 +16,9 @@ router.use(authMiddleware);
 // GET /api/v1/lessons
 router.get('/', asyncErrorWrapper(controller.getLessons.bind(controller)));
 
+// GET /api/v1/lessons/:groupId/steps
+router.get('/:groupId/steps', asyncErrorWrapper(controller.getLessonGroup.bind(controller)));
+
 // POST /api/v1/lessons/submit
 router.post('/submit', asyncErrorWrapper(controller.submitAnswer.bind(controller)));
 

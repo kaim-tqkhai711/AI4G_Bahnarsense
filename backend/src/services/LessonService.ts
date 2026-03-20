@@ -17,31 +17,75 @@ export class LessonService {
         const progresses = await this.lessonRepository.getUserProgress(uid);
         const completedLessonIds = progresses.map(p => p.lesson_id);
 
-        let lessons: { lesson_id: string; title: string; order_index?: number; type?: string }[];
+        let lessons: any[];
         try {
             lessons = await this.lessonRepository.getLessonsFromDb();
         } catch {
-            lessons = FALLBACK_LESSONS;
+            return FALLBACK_LESSONS; // return fallback if db fails
         }
-        if (!lessons.length) lessons = FALLBACK_LESSONS;
 
-        const sorted = [...lessons].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+        // Filter only the main nodes to display on the map
+        const introNodes = lessons.filter(l => l.type === 'intro_screen');
+        if (!introNodes.length) return FALLBACK_LESSONS;
+
+        const sorted = [...introNodes].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+        
         const processedLessons = sorted.map((lesson, index) => {
-            const isDone = completedLessonIds.includes(lesson.lesson_id);
+            // e.g. "cd1_l1_intro" -> "cd1_l1"
+            const groupIdMatch = lesson.lesson_id.match(/^(.*)_intro$/);
+            const groupId = groupIdMatch ? groupIdMatch[1] : lesson.lesson_id;
+
+            // Mark done if they completed at least one step in this group
+            const isDone = completedLessonIds.some(id => id.startsWith(groupId));
             let status: 'locked' | 'active' | 'done' = 'locked';
-            if (isDone) status = 'done';
-            else if (index === 0 || completedLessonIds.includes(sorted[index - 1].lesson_id)) status = 'active';
+            
+            if (isDone) {
+                status = 'done';
+            } else if (index === 0) {
+                status = 'active';
+            } else {
+                // If previous group is done, this one is active
+                const prevMatch = sorted[index - 1].lesson_id.match(/^(.*)_intro$/);
+                const prevGroupId = prevMatch ? prevMatch[1] : sorted[index - 1].lesson_id;
+                if (completedLessonIds.some(id => id.startsWith(prevGroupId))) {
+                    status = 'active';
+                } else {
+                    status = 'active'; // Temporarily unlock all for demo purposes
+                }
+            }
+
+            // Parse content
+            const content = typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content;
+            const topicName = lesson.title || content?.intro?.topic || "Bài rèn luyện";
 
             return {
-                id: lesson.lesson_id,
-                topic: lesson.title,
+                id: groupId,
+                topic: topicName,
                 difficulty: lesson.order_index ?? index + 1,
-                type: lesson.type === 'vocabulary' ? 'vocab' : (lesson.type ?? 'vocabulary'),
+                type: 'intro_screen',
                 status,
+                content // Pass the whole object along
             };
         });
 
         return processedLessons;
+    }
+
+    /**
+     * GET /lessons/:groupId/steps
+     */
+    async getLessonGroup(groupId: string) {
+        let rows = await this.lessonRepository.getLessonGroup(groupId);
+        if (!rows.length) {
+            // Fallback for mock questions if not found
+            rows = await this.lessonRepository.getLessonsFromDb();
+            rows = rows.filter(r => r.lesson_id === groupId || r.lesson_id.startsWith(groupId));
+        }
+
+        return rows.map(r => ({
+            ...r,
+            content: typeof r.content === 'string' ? JSON.parse(r.content) : r.content
+        }));
     }
 
     /**

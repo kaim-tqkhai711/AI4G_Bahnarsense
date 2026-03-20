@@ -20,6 +20,20 @@ export class LessonController extends BaseController {
         }
     }
 
+    async getLessonGroup(req: Request, res: Response): Promise<void> {
+        try {
+            const uid = req.user?.id;
+            if (!uid) throw new Error('User not found in request');
+
+            const { groupId } = req.params;
+            const steps = await this.lessonService.getLessonGroup(groupId);
+            
+            this.handleSuccess(res, steps);
+        } catch (error) {
+            this.handleError(error, res, 'LessonController.getLessonGroup');
+        }
+    }
+
     async submitAnswer(req: Request, res: Response): Promise<void> {
         try {
             const uid = req.user?.id;

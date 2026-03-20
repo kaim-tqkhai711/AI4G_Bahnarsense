@@ -60,14 +60,16 @@ Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không có ma
      */
     async scorePronunciation(audioBase64: string, mimeType: string, expectedText: string) {
         const prompt = `
-Bạn là giáo viên dạy tiếng Ba Na/Việt Nam.
-Học sinh vừa đọc từ/câu sau: "${expectedText}".
-Hãy lắng nghe đoạn âm thanh từ người dùng và đánh giá độ chính xác phát âm của họ so với từ/câu mẫu.
-Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY:
+Bạn là chuyên gia ngôn ngữ tiếng Ba Na/Việt Nam.
+Học sinh vừa được yêu cầu đọc từ/câu sau: "${expectedText}".
+Hãy lắng nghe đoạn âm thanh Base64 và đánh giá xem họ phát âm sai những từ cụ thể nào trong câu gốc.
+Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không markdown ngầm):
 {
-  "score": <number từ 0-100 tương ứng với độ chính xác>,
-  "feedback": "<nhận xét ngắn gọn, ví dụ: Rất tốt, hoặc Cần phát âm rõ âm 'x' hơn>"
+  "score": <number từ 0-100 đánh giá độ trôi chảy>,
+  "wrong_words": ["mảng", "chứa", "các", "từ", "bị", "đọc", "sai", "hoặc", "nuốt", "âm"],
+  "feedback": "<nhận xét ngắn gọn khích lệ>"
 }
+Nếu học sinh đọc đúng hoàn toàn, hãy để mảng wrong_words rỗng [].
 `;
         // Gemini 1.5 Flash hỗ trợ Multimodal audio
         const response = await ai.models.generateContent({

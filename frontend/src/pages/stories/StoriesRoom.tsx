@@ -94,7 +94,8 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
     // Audio states
     const [isRecording, setIsRecording] = useState(false);
     const [isScoring, setIsScoring] = useState(false);
-    const [scoreResult, setScoreResult] = useState<{ score: number, feedback: string } | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [scoreResult, setScoreResult] = useState<{ score: number, feedback: string, wrong_words?: string[] } | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
 
@@ -174,7 +175,7 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
             });
 
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            const response = await fetchWithMonitor<{ score: number, feedback: string } | { data: { score: number, feedback: string } }>(
+            const response = await fetchWithMonitor<{ score: number, feedback: string, wrong_words?: string[] } | { data: { score: number, feedback: string, wrong_words?: string[] } }>(
                 `${API_URL}/api/v1/ai/score-pronunciation`,
                 {
                     method: 'POST',
@@ -193,13 +194,34 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
             );
 
             const result = 'score' in response ? response : response.data;
-            setScoreResult({ score: result.score, feedback: result.feedback });
+            setScoreResult({ score: result.score, feedback: result.feedback, wrong_words: result.wrong_words });
             if (result.score >= 80) triggerConfetti();
         } catch (error) {
             console.error(error);
             setScoreResult({ score: 0, feedback: 'Kết nối kém hoặc có lỗi. Xin thử lại.' });
         } finally {
             setIsScoring(false);
+        }
+    };
+
+    const handlePlaySample = async () => {
+        if (!selectedWord) return;
+        setIsPlaying(true);
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${API_URL}/api/v1/ai/pronounce?word=${encodeURIComponent(selectedWord)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            const base64Audio = data.data?.audio_base64 || data.audio_base64;
+            if (base64Audio) {
+                const audio = new Audio(base64Audio);
+                await audio.play();
+            }
+        } catch(e) {
+            console.error("Lỗi khi nghe mẫu", e);
+        } finally {
+            setIsPlaying(false);
         }
     };
 
@@ -255,7 +277,14 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                         <div className="max-w-2xl mx-auto">
                             <div className="flex items-start justify-between mb-4">
                                 <div>
-                                    <h3 className="text-3xl font-bold text-stone-900">{selectedWord}</h3>
+                                    <h3 className="text-3xl font-bold text-stone-900 leading-normal flex flex-wrap">
+                                        {selectedWord.split(' ').map((wordPart, idx) => {
+                                            const cleanPart = wordPart.replace(/[.,()]/g, '').toLowerCase();
+                                            const isWrong = scoreResult?.wrong_words?.map((w:string) => w.toLowerCase()).includes(cleanPart);
+                                            const colorClass = scoreResult ? (isWrong ? 'text-red-500' : 'text-green-500') : 'text-stone-900';
+                                            return <span key={idx} className={`${colorClass} mr-2 transition-colors duration-500`}>{wordPart}</span>
+                                        })}
+                                    </h3>
                                     <p className="text-lg text-emerald-600 font-medium mt-1">
                                         {story.dictionary[selectedWord]?.meaning}
                                     </p>
@@ -269,8 +298,11 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                             </div>
 
                             <div className="flex items-center justify-between gap-3 mt-6">
-                                <button className="flex-1 flex items-center justify-center gap-2 bg-stone-100 text-stone-900 py-3.5 rounded-2xl font-bold hover:bg-stone-200 transition-colors">
-                                    <Volume2 className="w-5 h-5" />
+                                <button 
+                                    onClick={handlePlaySample} 
+                                    disabled={isPlaying}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-stone-100 text-stone-900 py-3.5 rounded-2xl font-bold hover:bg-stone-200 transition-colors">
+                                    {isPlaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <Volume2 className="w-5 h-5" />}
                                     Nghe mẫu
                                 </button>
 

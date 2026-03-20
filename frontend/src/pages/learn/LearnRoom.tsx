@@ -67,8 +67,8 @@ export function LearnRoom() {
                             Authorization: `Bearer ${token}`
                         }
                     },
-                    'ziczac_lessons_cache',
-                    3000
+                    'ziczac_lessons_cache_v2', // Đổi key để bust cache cũ ở LocalStorage của User
+                    10000 // Tăng thời gian đợi API từ 3s lên 10s tránh fallback nhầm
                 );
 
                 // API returns { data: Lesson[] }; cache fallback may return array directly

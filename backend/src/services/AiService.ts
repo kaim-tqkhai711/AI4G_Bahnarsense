@@ -1,22 +1,62 @@
 import { GeminiService } from './GeminiService';
-// Import ReviewService / Firestore Repo nếu phát sinh lỗi để auto-trigger LogError (Thiết lập ở Nhóm 4)
+import { CustomTtsService } from './CustomTtsService';
+import { NlpRulesService } from './NlpRulesService';
+import { spawn } from 'child_process';
+import path from 'path';
 
 export class AiService {
-    constructor(private readonly geminiService: GeminiService) { }
+    private ttsService: CustomTtsService;
+    private nlpRules: NlpRulesService;
+
+    constructor(private readonly geminiService: GeminiService) {
+        this.ttsService = new CustomTtsService();
+        this.nlpRules = new NlpRulesService();
+    }
+
+    private runPythonDtw(baseAudioBase64: string, userAudioBase64: string): Promise<{ success: boolean, acoustic_score?: number, error?: string }> {
+        return new Promise((resolve, reject) => {
+            const scriptPath = path.join(__dirname, '../scripts/dtw_scorer.py');
+            const pyProcess = spawn('python', [scriptPath]);
+            
+            let stdoutData = '';
+            let stderrData = '';
+
+            pyProcess.stdout.on('data', (data) => {
+                stdoutData += data.toString();
+            });
+
+            pyProcess.stderr.on('data', (data) => {
+                stderrData += data.toString();
+            });
+
+            pyProcess.on('close', (code) => {
+                try {
+                    const result = JSON.parse(stdoutData.trim());
+                    resolve(result);
+                } catch (e) {
+                    reject(new Error(`Python output parse error: ${stderrData} || ${stdoutData}`));
+                }
+            });
+
+            const payload = JSON.stringify({
+                baseAudio: baseAudioBase64,
+                userAudio: userAudioBase64
+            });
+            pyProcess.stdin.write(payload);
+            pyProcess.stdin.end();
+        });
+    }
 
     /**
-     * Tính năng GET /audio/pronounce
-     * Giải pháp lưu file gốc ở OneDrive và đưa các đoạn mp3 nén siêu nhỏ lên Firebase Storage.
+     * Tính năng GET /ai/pronounce
      */
     async getPronounceUrl(word: string) {
-        // Trong thực tế, bạn map tên Firebase Storage File theo Word.
-        // Ví dụ: file nằm trong bucket "pronunciation/"
-        // Do MVP ta không tải file lên vội, nên trả về public url tĩnh hợp lệ.
-        const fileUrl = `https://firebasestorage.googleapis.com/v0/b/YOUR-PROJECT.appspot.com/o/pronunciation%2F${encodeURIComponent(word)}.mp3?alt=media`;
-
+        // Tích hợp Custom TTS
+        const audioBase64 = await this.ttsService.generateSpeech(word);
+        
         return {
             word: word,
-            audio_url: fileUrl
+            audio_base64: `data:audio/mp3;base64,${audioBase64}`
         };
     }
 
@@ -24,23 +64,22 @@ export class AiService {
      * Tính năng POST /ai/chat/speak
      */
     async chatSpeak(uid: string, topicId: string, audioBase64?: string, mimeType?: string, sttText?: string) {
-
-        // B1: Xử lý Speech-To-Text nếu Client gửi Audio.
-        // B2: Chuyển dữ liệu vào Gemini
-
         let textToEvaluate = sttText || "";
 
-        // Cải tiến: Nếu có Audio Base64, gửi thẳng vào Multimodal Gemini để nó vừa nghe vừa đánh giá.
+        // Multimodal Gemini: Vừa nghe vừa phán đoán.
         const geminiResult = await this.geminiService.evaluatePronunciation(textToEvaluate, topicId, audioBase64, mimeType);
 
-        // B3: Auto Trigger Log Data (sẽ làm ở Nhóm 4 - Spaced Repetition)
-        if (geminiResult.accuracy < 80) {
-            // Pseudo code: await this.reviewService.logError(uid, 'pronunciation', word, geminiResult.feedback);
-        }
+        // Màng lọc 1: Xử lý NLP trên đoạn trả về Ba Na
+        const cleanResponse = this.nlpRules.cleanChatbotResponse(geminiResult.response_bhn);
+        geminiResult.response_bhn = cleanResponse;
+
+        // Màng lọc TTS: Nhét text Ba Na (sạch) vào Custom TTS Model
+        const responseAudioBase64 = await this.ttsService.generateSpeech(cleanResponse);
 
         return {
-            stt_recognized: textToEvaluate,
+            stt_recognized: textToEvaluate || "Voice detected via Audio",
             evaluation: geminiResult,
+            audio_base64: `data:audio/mp3;base64,${responseAudioBase64}`,
             passed: geminiResult.accuracy >= 80
         };
     }
@@ -49,11 +88,27 @@ export class AiService {
      * Tính năng POST /ai/score-pronunciation
      */
     async scorePronunciation(uid: string, audioBase64: string, mimeType: string, expectedText: string) {
-        const geminiResult = await this.geminiService.scorePronunciation(audioBase64, mimeType, expectedText);
+        // Bước 1: Sinh Audio Chuẩn từ Custom TTS
+        const standardAudioBase64 = await this.ttsService.generateSpeech(expectedText);
+
+        // Bước 2 & 3: Gọi Python DTW song song với Gemini nhận diện từ sai
+        const [dtwResult, geminiResult] = await Promise.all([
+            this.runPythonDtw(standardAudioBase64, audioBase64).catch(e => {
+                console.error("DTW Error:", e);
+                return { success: false, acoustic_score: 0, error: e.message };
+            }),
+            this.geminiService.scorePronunciation(audioBase64, mimeType, expectedText).catch(e => {
+                console.error("Gemini Error:", e);
+                return { score: 0, wrong_words: [], feedback: "Có lỗi khi phân tích giọng nói" };
+            })
+        ]);
+
+        const acousticScore = dtwResult.success ? Math.round(dtwResult.acoustic_score!) : (geminiResult.score || 0);
 
         return {
-            score: geminiResult.score || 0,
-            feedback: geminiResult.feedback || "Cố gắng lên nhé!"
+            score: acousticScore,
+            wrong_words: geminiResult.wrong_words || [],
+            feedback: geminiResult.feedback
         };
     }
 }

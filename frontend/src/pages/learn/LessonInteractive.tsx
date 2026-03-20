@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, XCircle } from 'lucide-react';
-import { trackEvent } from '../../lib/monitor';
+import { X, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
+import { useUserStore } from '../../store/useUserStore';
 
-// --- MOCK DATA CÂU HỎI ---
+// --- MAPPED DATA CÂU HỎI TỪ BACKEND ---
 type QuestionType = 'quiz' | 'translate';
 
 interface Question {
@@ -16,48 +17,108 @@ interface Question {
     hint?: string;
 }
 
-const MOCK_QUESTIONS: Question[] = [
-    {
-        id: 'q1',
-        type: 'quiz',
-        prompt: 'Từ "Xin chào" trong tiếng Ba Na là gì?',
-        options: ['Ê pẹ', 'Ngay', 'Jơ', 'KơRai'],
-        correctAnswer: 'Ê pẹ',
-        hint: 'Nó bắt đầu bằng chữ Ê.'
-    },
-    {
-        id: 'q2',
-        type: 'translate',
-        prompt: 'Dịch câu sau: "Cảm ơn bạn"',
-        correctAnswer: 'Nao',
-        hint: 'Từ này có 3 chữ cái, bắt đầu bằng N.'
-    }
-];
-
 export function LessonInteractive() {
     const { id } = useParams();
     const navigate = useNavigate();
+
+    const [questions, setQuestions] = useState<Question[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     const [currentIdx, setCurrentIdx] = useState(0);
     const [selectedAnswer, setSelectedAnswer] = useState('');
     const [status, setStatus] = useState<'idle' | 'checking' | 'correct' | 'wrong'>('idle');
 
-    const question = MOCK_QUESTIONS[currentIdx];
-    const total = MOCK_QUESTIONS.length;
-    const progress = (currentIdx / total) * 100;
+    useEffect(() => {
+        const loadLesson = async () => {
+            setIsLoading(true);
+            try {
+                const token = useUserStore.getState().token;
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+                if (!token) return;
+
+                const response = await fetchWithMonitor<{ success: boolean; data: any[] } | any[]>(
+                    `${API_URL}/api/v1/lessons/${id}/steps`,
+                    { headers: { Authorization: `Bearer ${token}` } },
+                    'lesson_steps_interactive'
+                );
+
+                const list = Array.isArray(response) ? response : (response?.data ?? []);
+                
+                // Lọc bỏ intro_screen, giữ lại các phần nội dung và test
+                const exercises = list.filter((s: any) => s.type !== 'intro_screen');
+                
+                // Map sơ bộ các type từ CSV về giao diện Quiz & Translate có sẵn
+                const mappedQuestions: Question[] = exercises.map((s: any) => {
+                    const raw = typeof s.content === 'string' ? JSON.parse(s.content) : s.content || {};
+                    const isTranslating = s.type === 'quiz_text_input' || s.type === 'quiz_arrange';
+                    
+                    // Xử lý options: Dữ liệu CSV có options dạng {"A": "Từ 1", "B": "Từ 2"}
+                    let opts: string[] = [];
+                    if (raw.options && typeof raw.options === 'object') {
+                        opts = Object.values(raw.options);
+                    } else if (raw.words) {
+                        opts = raw.words;
+                    }
+
+                    // Map đáp án (Từ chữ A,B,C,D lấy ra text thực sự, hoặc lấy correct_answer)
+                    let textCorrectAnswer = s.correct_answer || '';
+                    if (raw.options && textCorrectAnswer && raw.options[textCorrectAnswer]) {
+                        textCorrectAnswer = raw.options[textCorrectAnswer];
+                    } else if (s.type === 'learn_flashcard') {
+                        // Nếu là học từ thì auto đúng khi bấm Tiếp Tục
+                        textCorrectAnswer = 'SKIP';
+                    }
+
+                    return {
+                        id: s.lesson_id || Math.random().toString(),
+                        type: isTranslating ? 'translate' : 'quiz',
+                        prompt: raw.question || raw.word || raw.dialogue_title || s.description || 'Câu hỏi',
+                        options: opts.length > 0 ? opts : ['Đã hiểu', 'Nghe lại'], // Fallback options cho learn_flashcard
+                        correctAnswer: textCorrectAnswer,
+                        hint: raw.hint || raw.meaning || 'Hãy thử lại nhé!'
+                    };
+                });
+
+                if (mappedQuestions.length === 0) {
+                    // Fallback
+                    mappedQuestions.push({
+                        id: 'fallback1', type: 'quiz', prompt: 'Không có câu hỏi nào. Nhấn Hoàn thành.', options: ['Hoàn thành'], correctAnswer: 'Hoàn thành'
+                    });
+                }
+                setQuestions(mappedQuestions);
+            } catch (err) {
+                console.warn("[LessonInteractive] API Error:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (id) loadLesson();
+    }, [id]);
+
+    const question = questions[currentIdx];
+    const total = questions.length;
+    const progress = total ? (currentIdx / total) * 100 : 0;
 
     const handleCheck = () => {
         if (!selectedAnswer) return;
 
+        // Nếu là learn_flashcard (correct='SKIP')
+        if (question?.correctAnswer === 'SKIP' || selectedAnswer === 'Đã hiểu' || selectedAnswer === 'Hoàn thành') {
+            setStatus('correct');
+            return;
+        }
+
         setStatus('checking');
 
-        // Giả lập độ trễ mạng
         setTimeout(() => {
-            if (selectedAnswer.trim().toLowerCase() === question.correctAnswer.toLowerCase()) {
+            const isCorrect = selectedAnswer.trim().toLowerCase() === question?.correctAnswer?.toString().trim().toLowerCase();
+            if (isCorrect) {
                 setStatus('correct');
             } else {
                 setStatus('wrong');
-                trackEvent('lesson_mistake', { questionId: question.id, answer: selectedAnswer });
+                trackEvent('lesson_mistake', { questionId: question?.id, answer: selectedAnswer });
             }
         }, 300);
     };
@@ -68,10 +129,20 @@ export function LessonInteractive() {
             setSelectedAnswer('');
             setStatus('idle');
         } else {
-            // Hoàn thành -> Navigate to Rewards screen
             navigate(`/lesson/${id}/rewards`);
         }
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen">
+                <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
+                <p className="text-stone-500 font-bold">Đang nạp bài tập...</p>
+            </div>
+        );
+    }
+
+    if (!question) return null;
 
     return (
         <div className="min-h-screen bg-white flex flex-col relative font-nunito">

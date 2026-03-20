@@ -35,6 +35,17 @@ export class LessonRepository {
         return data as LessonRow;
     }
 
+    /** Fetch all steps belonging to a lesson group (e.g. cd1_l1) */
+    async getLessonGroup(groupId: string): Promise<LessonRow[]> {
+        const { data, error } = await supabase
+            .from('lessons')
+            .select('lesson_id, title, description, content, order_index, type, correct_answer')
+            .like('lesson_id', `${groupId}_%`)
+            .order('order_index', { ascending: true, nullsFirst: false });
+        if (error) throw error;
+        return (data || []) as LessonRow[];
+    }
+
     async getUserProgress(uid: string) {
         const { data, error } = await supabase
             .from('user_progress')
@@ -43,10 +54,10 @@ export class LessonRepository {
 
         if (error) throw error;
         return (data || []).map((row: Record<string, unknown>) => ({
-            user_id: row.user_id,
-            lesson_id: row.lesson_id,
-            status: row.status,
-            completed_at: row.completed_at,
+            user_id: row.user_id as string,
+            lesson_id: row.lesson_id as string,
+            status: row.status as string,
+            completed_at: row.completed_at as string,
         }));
     }
 
