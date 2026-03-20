@@ -27,6 +27,8 @@ export function LessonInteractive() {
     const [currentIdx, setCurrentIdx] = useState(0);
     const [selectedAnswer, setSelectedAnswer] = useState('');
     const [status, setStatus] = useState<'idle' | 'checking' | 'correct' | 'wrong'>('idle');
+    const [wrongCount, setWrongCount] = useState(0);
+    const [hasAttemptedCurrent, setHasAttemptedCurrent] = useState(false);
 
     useEffect(() => {
         const loadLesson = async () => {
@@ -114,6 +116,14 @@ export function LessonInteractive() {
 
         setTimeout(() => {
             const isCorrect = selectedAnswer.trim().toLowerCase() === question?.correctAnswer?.toString().trim().toLowerCase();
+            
+            if (!hasAttemptedCurrent) {
+                setHasAttemptedCurrent(true);
+                if (!isCorrect) {
+                    setWrongCount(prev => prev + 1);
+                }
+            }
+
             if (isCorrect) {
                 setStatus('correct');
             } else {
@@ -139,12 +149,15 @@ export function LessonInteractive() {
     };
 
     const handleNext = () => {
+        setHasAttemptedCurrent(false);
         if (currentIdx < total - 1) {
             setCurrentIdx(currentIdx + 1);
             setSelectedAnswer('');
             setStatus('idle');
         } else {
-            navigate(`/lesson/${id}/rewards`);
+            const correctCount = total - wrongCount;
+            const percentage = total > 0 ? (correctCount / total) * 100 : 100;
+            navigate(`/lesson/${id}/rewards`, { state: { percentage, correctCount, totalQuestions: total } });
         }
     };
 

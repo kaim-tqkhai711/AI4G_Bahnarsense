@@ -13,11 +13,9 @@ export class ReviewRepository {
         const nextReviewDate = new Date();
         nextReviewDate.setDate(nextReviewDate.getDate() + nextReviewFactor);
 
-        const { item_id: _omit, ...rest } = data;
         const payload = {
             user_id: uid,
             item_id: data.item_id,
-            ...rest,
             error_count: nextReviewFactor,
             next_review_date: nextReviewDate.toISOString(),
             updated_at: new Date().toISOString(),
