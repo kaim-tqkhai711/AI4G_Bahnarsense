@@ -119,6 +119,21 @@ export function LessonInteractive() {
             } else {
                 setStatus('wrong');
                 trackEvent('lesson_mistake', { questionId: question?.id, answer: selectedAnswer });
+                
+                // Đồng bộ lưu lỗi sai lên Spaced Repetition Backend
+                const token = useUserStore.getState().token;
+                if (token && question?.id) {
+                    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                    fetchWithMonitor(`${API_URL}/api/v1/review/log_error`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({
+                            source: question.type === 'quiz' ? 'vocabulary' : 'grammar',
+                            item_id: question.id,
+                            user_answer: selectedAnswer
+                        })
+                    }, undefined, 10000).catch(err => console.warn('Failed to log review error:', err));
+                }
             }
         }, 300);
     };

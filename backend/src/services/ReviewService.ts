@@ -9,7 +9,41 @@ export class ReviewService {
     }
 
     async fetchDailyTasks(uid: string) {
-        const tasks = await this.reviewRepository.getDailyTasks(uid);
+        let tasks = await this.reviewRepository.getDailyTasks(uid);
+        
+        // Enrich tasks with word and meaning from lessons table
+        const { supabase } = await import('@/utils/supabaseAdmin');
+        
+        const itemIds = tasks.map((t: any) => t.item_id);
+        if (itemIds.length > 0) {
+            const { data: lessonsData } = await supabase
+                .from('lessons')
+                .select('lesson_id, content, description')
+                .in('lesson_id', itemIds);
+                
+            if (lessonsData) {
+                tasks = tasks.map((task: any) => {
+                    const lesson = lessonsData.find((l: any) => l.lesson_id === task.item_id);
+                    let wordStr = task.item_id;
+                    let meaningStr = "Cần ôn tập lại";
+                    
+                    if (lesson) {
+                        const content = typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content || {};
+                        wordStr = content.question || content.word || lesson.description || wordStr;
+                        meaningStr = content.meaning || content.hint || (content.options ? Object.values(content.options).join(", ") : meaningStr);
+                    }
+                    
+                    return {
+                        id: task.id,
+                        item_id: task.item_id,
+                        word: wordStr,
+                        meaning: meaningStr,
+                        errorCount: task.error_count || 1
+                    };
+                });
+            }
+        }
+
         return {
             total_due: tasks.length,
             tasks: tasks,
@@ -40,5 +74,9 @@ export class ReviewService {
 
         const movedCount = await this.reviewRepository.postponeReviews(uid, newDate.toISOString());
         return { success: true, postponedCount: movedCount };
+    }
+
+    async resolveTask(uid: string, itemId: string) {
+        return this.reviewRepository.resolveTask(uid, itemId);
     }
 }

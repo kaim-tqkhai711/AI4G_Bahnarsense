@@ -28,7 +28,7 @@ export function ReviewRoom() {
                         }
                     },
                     'ziczac_review_cache',
-                    3000
+                    10000 // Nâng timeout lên 10s để tránh fallback local cache sớm
                 );
 
                 const tasks = response?.data?.tasks;
@@ -54,6 +54,28 @@ export function ReviewRoom() {
     // ... handleNext logic ...
     const handleNext = (isRemembered: boolean) => {
         setIsFlipped(false);
+        const cardTarget = activeCard;
+        
+        // Gọi API ngầm trong lúc thẻ xoay úp lại mà không làm đứng giao diện
+        const token = useUserStore.getState().token;
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        
+        if (token && cardTarget && cardTarget.item_id) {
+            if (isRemembered) {
+                fetchWithMonitor(`${API_URL}/api/v1/review/resolve_task`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ item_id: cardTarget.item_id })
+                }, undefined, 10000).catch(err => console.warn("Lỗi đồng bộ giải quyết ôn tập", err));
+            } else {
+                fetchWithMonitor(`${API_URL}/api/v1/review/log_error`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ source: 'vocabulary', item_id: cardTarget.item_id })
+                }, undefined, 10000).catch(err => console.warn("Lỗi đồng bộ lỗi ôn tập", err));
+            }
+        }
+
         setTimeout(() => {
             const nextMistakes = [...mistakes];
             if (isRemembered) {

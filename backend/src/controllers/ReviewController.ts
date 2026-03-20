@@ -63,4 +63,19 @@ export class ReviewController extends BaseController {
             this.handleError(error, res, 'ReviewController.postponeReviews');
         }
     }
+
+    async resolveTask(req: Request, res: Response): Promise<void> {
+        try {
+            const uid = req.user?.id;
+            if (!uid) throw new Error('User context missing');
+            
+            const itemId = req.body.item_id;
+            if (!itemId) throw new Error('Thiếu item_id');
+
+            const result = await this.reviewService.resolveTask(uid, itemId);
+            this.handleSuccess(res, result);
+        } catch (error) {
+            this.handleError(error, res, 'ReviewController.resolveTask');
+        }
+    }
 }

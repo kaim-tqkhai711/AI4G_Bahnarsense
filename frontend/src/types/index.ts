@@ -29,6 +29,7 @@ export type Lesson = {
 
 export type Mistake = {
     id: string;
+    item_id?: string;
     word: string;
     meaning: string;
     errorCount: number;

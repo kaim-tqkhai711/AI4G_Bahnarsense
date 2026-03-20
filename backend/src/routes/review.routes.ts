@@ -26,4 +26,7 @@ router.get('/smart_reminder', asyncErrorWrapper(controller.getSmartReminder.bind
 // POST /api/v1/review/postpone
 router.post('/postpone', asyncErrorWrapper(controller.postponeReviews.bind(controller)));
 
+// POST /api/v1/review/resolve_task
+router.post('/resolve_task', asyncErrorWrapper(controller.resolveTask.bind(controller)));
+
 export default router;

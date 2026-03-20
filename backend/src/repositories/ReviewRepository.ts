@@ -71,4 +71,25 @@ export class ReviewRepository {
         }
         return rows.length;
     }
+
+    async resolveTask(uid: string, itemId: string) {
+        // Thuật toán Spaced Repetition cơ bản:
+        // Cập nhật thẻ, thiết lập lại error_count bằng 0, dời ngày học tiếp theo xa ra trong tương lai (vd: +10 ngày)
+        // để không xuất hiện trong hàng đợi đánh giá ngày mai.
+        const nextReviewDate = new Date();
+        nextReviewDate.setDate(nextReviewDate.getDate() + 10);
+
+        const { data, error } = await supabase
+            .from('review_cards')
+            .update({ 
+                error_count: 0, 
+                next_review_date: nextReviewDate.toISOString(), 
+                updated_at: new Date().toISOString() 
+            })
+            .eq('user_id', uid)
+            .eq('item_id', itemId);
+
+        if (error) throw error;
+        return { success: true };
+    }
 }
