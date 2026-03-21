@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { X, CheckCircle, XCircle, Loader2, Volume2 } from 'lucide-react';
 import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
 import { useUserStore } from '../../store/useUserStore';
 
 // --- MAPPED DATA CÂU HỎI TỪ BACKEND ---
-type QuestionType = 'quiz' | 'translate';
+type QuestionType = 'quiz' | 'translate' | 'flashcard';
 
 interface Question {
     id: string;
@@ -15,6 +15,14 @@ interface Question {
     options?: string[];
     correctAnswer: string;
     hint?: string;
+    flashcardData?: {
+        word: string;
+        meaning: string;
+        audio_api?: string;
+        image_url?: string;
+        example_viet?: string;
+        example_bahnar?: string;
+    };
 }
 
 export function LessonInteractive() {
@@ -65,20 +73,27 @@ export function LessonInteractive() {
 
                     // Map đáp án (Từ chữ A,B,C,D lấy ra text thực sự, hoặc lấy correct_answer)
                     let textCorrectAnswer = s.correct_answer || '';
-                    if (raw.options && textCorrectAnswer && raw.options[textCorrectAnswer]) {
-                        textCorrectAnswer = raw.options[textCorrectAnswer];
-                    } else if (s.type === 'learn_flashcard') {
-                        // Nếu là học từ thì auto đúng khi bấm Tiếp Tục
+                    let type: QuestionType = isTranslating ? 'translate' : 'quiz';
+                    if (s.type === 'learn_flashcard') {
+                        type = 'flashcard';
                         textCorrectAnswer = 'SKIP';
                     }
 
                     return {
                         id: s.lesson_id || Math.random().toString(),
-                        type: isTranslating ? 'translate' : 'quiz',
-                        prompt: raw.question || raw.word || raw.dialogue_title || s.description || 'Câu hỏi',
+                        type,
+                        prompt: raw.question || 'Học từ vựng mới',
                         options: opts.length > 0 ? opts : ['Đã hiểu', 'Nghe lại'], // Fallback options cho learn_flashcard
                         correctAnswer: textCorrectAnswer,
-                        hint: raw.hint || raw.meaning || 'Hãy thử lại nhé!'
+                        hint: raw.hint || raw.meaning || 'Hãy thử lại nhé!',
+                        flashcardData: type === 'flashcard' ? {
+                            word: raw.word || raw.content || '',
+                            meaning: raw.meaning || '',
+                            audio_api: raw.audio_api,
+                            image_url: raw.image_url,
+                            example_viet: raw.example_viet,
+                            example_bahnar: raw.example_bahnar
+                        } : undefined
                     };
                 });
 
@@ -199,9 +214,71 @@ export function LessonInteractive() {
             {/* In-Lesson Workspace */}
             <div className="flex-1 px-6 pt-8 pb-10 flex flex-col max-w-lg mx-auto w-full">
 
-                <h1 className="text-2xl font-black text-stone-800 mb-8">
-                    {question.prompt}
-                </h1>
+                {question.type !== 'flashcard' && (
+                    <h1 className="text-2xl font-black text-stone-800 mb-8">
+                        {question.prompt}
+                    </h1>
+                )}
+
+                {/* Question Type: Flashcard */}
+                {question.type === 'flashcard' && question.flashcardData && (
+                    <div className="flex flex-col gap-6 items-center w-full">
+                        <div className="w-full bg-white border-2 border-stone-200 rounded-[2rem] p-6 flex flex-col items-center shadow-sm text-center relative overflow-hidden">
+                            {question.flashcardData.image_url && (
+                                <div className="w-full h-40 mb-4 rounded-xl overflow-hidden bg-stone-50 flex items-center justify-center">
+                                    <img src={question.flashcardData.image_url} alt="Vocabulary" className="max-w-full max-h-full object-contain mix-blend-multiply" />
+                                </div>
+                            )}
+                            <h2 className="text-3xl font-black text-stone-800 mb-2">{question.flashcardData.word}</h2>
+                            <p className="text-xl font-bold text-stone-500 mb-4">{question.flashcardData.meaning}</p>
+                            
+                            {(question.flashcardData.example_bahnar || question.flashcardData.example_viet) && (
+                                <div className="w-full bg-stone-50 rounded-2xl p-4 mt-2">
+                                    <p className="text-lg font-bold text-stone-700 italic border-l-4 border-orange-400 pl-3 text-left">"{question.flashcardData.example_bahnar}"</p>
+                                    <p className="text-stone-500 font-medium text-left pl-4 mt-1">{question.flashcardData.example_viet}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col gap-3 w-full mt-4">
+                            {question.options?.map((opt) => {
+                                const isSelected = selectedAnswer === opt;
+                                const isPlayAudio = opt.toLowerCase().includes('nghe lại') || opt.toLowerCase().includes('nghe');
+                                if (isPlayAudio && question.flashcardData?.audio_api) {
+                                  return (
+                                    <button
+                                        key={opt}
+                                        onClick={() => {
+                                            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                                            const audio = new Audio(`${API_URL}${question.flashcardData!.audio_api}`);
+                                            audio.play().catch(e => console.error("Audio play error", e));
+                                        }}
+                                        className="w-full p-4 rounded-2xl border-2 border-sky-200 text-sky-500 font-bold text-lg bg-sky-50 hover:bg-sky-100 transition-all active:scale-95 flex justify-center items-center gap-2"
+                                        style={{ borderBottomWidth: '4px' }}
+                                    >
+                                        <Volume2 className="w-6 h-6" /> {opt}
+                                    </button>
+                                  )
+                                }
+                                return (
+                                    <button
+                                        key={opt}
+                                        onClick={() => {
+                                            setStatus('idle');
+                                            setSelectedAnswer(opt);
+                                        }}
+                                        className={`w-full p-4 rounded-2xl border-2 text-center font-bold text-lg transition-all
+                                            ${isSelected ? 'border-[#58cc02] bg-green-50 text-[#58cc02]' : 'border-stone-200 text-stone-700 bg-white hover:bg-stone-50'}
+                                        `}
+                                        style={{ borderBottomWidth: isSelected ? '2px' : '4px', transform: isSelected ? 'translateY(2px)' : 'none' }}
+                                    >
+                                        {opt}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Question Type: Quiz */}
                 {question.type === 'quiz' && (

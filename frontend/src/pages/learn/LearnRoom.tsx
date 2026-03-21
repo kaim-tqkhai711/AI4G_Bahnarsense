@@ -8,9 +8,10 @@ import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
 import { useUserStore } from '../../store/useUserStore';
 
 function DailyGoalWidget() {
-    const current = 3;
+    const { user } = useUserStore();
+    const current = user?.completedLessons?.length || 0;
     const target = 5;
-    const progress = (current / target) * 100;
+    const progress = Math.min((current / target) * 100, 100);
 
     return (
         <div className="fixed bottom-24 right-4 z-40 pointer-events-auto">
@@ -163,21 +164,25 @@ export function LearnRoom() {
                             style={{ x: offsetX }}
                             className="relative group text-center cursor-pointer flex flex-col items-center"
                         >
-                            {/* Active node decoration (Stars & Name tag) */}
-                            {isActive && (
+                            {/* Node decoration (Stars & Name tag) */}
+                            {(isActive || isCompleted) && (
                                 <motion.div
                                     initial={{ y: 10, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
-                                    className="absolute -top-16 flex flex-col items-center w-40 pointer-events-none"
+                                    className="absolute bottom-full mb-2 flex flex-col items-center w-40 pointer-events-none"
                                 >
-                                    <div className="flex gap-1.5 mb-1">
-                                        <span className="text-[#facc15] text-xl drop-shadow-sm">★</span>
-                                        <span className="text-[#facc15] text-xl -translate-y-1.5 drop-shadow-sm">★</span>
-                                        <span className="text-[#facc15] text-xl drop-shadow-sm">★</span>
-                                    </div>
-                                    <div className="bg-white px-4 py-1.5 rounded-xl shadow-sm border border-stone-100 font-bold text-xs text-stone-600 whitespace-nowrap">
-                                        {lesson.topic}
-                                    </div>
+                                    {isCompleted && (
+                                        <div className="flex gap-1.5 mb-1">
+                                            <span className="text-[#facc15] text-xl drop-shadow-sm">★</span>
+                                            <span className="text-[#facc15] text-xl -translate-y-1.5 drop-shadow-sm">★</span>
+                                            <span className="text-[#facc15] text-xl drop-shadow-sm">★</span>
+                                        </div>
+                                    )}
+                                    {isActive && (
+                                        <div className="bg-white px-4 py-1.5 rounded-xl shadow-sm border border-stone-100 font-bold text-xs text-stone-600 whitespace-nowrap">
+                                            {lesson.topic}
+                                        </div>
+                                    )}
                                 </motion.div>
                             )}
 
