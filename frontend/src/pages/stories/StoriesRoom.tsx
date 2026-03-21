@@ -131,7 +131,7 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
     const [showQuiz, setShowQuiz] = useState(false);
 
     if (showQuiz && story.quizzes && story.quizzes.length > 0) {
-        return <StoryQuiz quizzes={story.quizzes} onClose={onClose} storyTitle={story.title} />;
+        return <StoryQuiz quizzes={story.quizzes} onClose={onClose} storyTitle={story.title} storyId={story.id} />;
     }
 
     // Tách chuỗi thành mảng các từ, ưu tiên cụm từ trong từ điển (Mock logic: Split by space)
@@ -454,7 +454,7 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
 }
 
 // Quiz component
-function StoryQuiz({ quizzes, onClose, storyTitle }: { quizzes: StoryType['quizzes'], onClose: () => void, storyTitle: string }) {
+function StoryQuiz({ quizzes, onClose, storyTitle, storyId }: { quizzes: StoryType['quizzes'], onClose: () => void, storyTitle: string, storyId: number }) {
     const [currentIdx, setCurrentIdx] = useState(0);
     const [selectedOpt, setSelectedOpt] = useState<string | null>(null);
     const [isFinished, setIsFinished] = useState(false);
@@ -470,6 +470,17 @@ function StoryQuiz({ quizzes, onClose, storyTitle }: { quizzes: StoryType['quizz
             } else {
                 setIsFinished(true);
                 triggerConfetti();
+                
+                // Add points: 50 sao vàng, 100 XP
+                try {
+                    const { token } = useUserStore.getState();
+                    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                    fetchWithMonitor(`${API_URL}/api/v1/lessons/submit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ lessonId: `story_${storyId}`, questionId: 'completion', userAnswer: 'done' })
+                    });
+                } catch(e) { console.error("Error adding points", e); }
             }
         }, 1000);
     };
@@ -530,6 +541,19 @@ function StoryQuiz({ quizzes, onClose, storyTitle }: { quizzes: StoryType['quizz
                                         handleNext(opt); 
                                     } else {
                                         setSelectedOpt(opt);
+                                        // Log error for Spaced Repetition Review Room
+                                        try {
+                                            const { token } = useUserStore.getState();
+                                            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                                            fetchWithMonitor(`${API_URL}/api/v1/review/log_error`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                body: JSON.stringify({ item_id: `story_${storyId}_${currentIdx}` })
+                                            });
+                                        } catch (e) {
+                                            console.error("Lỗi log review", e);
+                                        }
+
                                         setTimeout(() => setSelectedOpt(null), 800);
                                     }
                                 }}
