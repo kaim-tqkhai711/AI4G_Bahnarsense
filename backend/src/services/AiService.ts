@@ -74,12 +74,17 @@ export class AiService {
         geminiResult.response_bhn = cleanResponse;
 
         // Màng lọc TTS: Nhét text Ba Na (sạch) vào Custom TTS Model
-        const responseAudioBase64 = await this.ttsService.generateSpeech(cleanResponse);
+        let responseAudioBase64 = "";
+        try {
+            responseAudioBase64 = await this.ttsService.generateSpeech(cleanResponse);
+        } catch (error) {
+            console.warn("[AiService] Lỗi TTS Server trong khi Chat:", error);
+        }
 
         return {
             stt_recognized: textToEvaluate || "Voice detected via Audio",
             evaluation: geminiResult,
-            audio_base64: `data:audio/mp3;base64,${responseAudioBase64}`,
+            audio_base64: responseAudioBase64 ? `data:audio/mp3;base64,${responseAudioBase64}` : null,
             passed: geminiResult.accuracy >= 80
         };
     }

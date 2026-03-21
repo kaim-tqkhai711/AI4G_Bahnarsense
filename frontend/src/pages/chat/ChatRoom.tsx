@@ -28,6 +28,7 @@ export function ChatRoom() {
     const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [inputText, setInputText] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -55,7 +56,7 @@ export function ChatRoom() {
             mediaRecorderRef.current.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 stream.getTracks().forEach(track => track.stop());
-                await handleProcessAI(audioBlob);
+                await handleSend({ audioBlob });
             };
 
             mediaRecorderRef.current.start();
@@ -73,41 +74,45 @@ export function ChatRoom() {
         }
     };
 
-    const handleProcessAI = async (audioBlob: Blob) => {
+    const handleSend = async ({ text, audioBlob }: { text?: string, audioBlob?: Blob }) => {
         setIsProcessing(true);
+        let base64Audio = undefined;
 
-        // Chuyển blob thành Base64
-        const base64Audio = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64data = reader.result?.toString().split(',')[1] || '';
-                resolve(base64data);
-            };
-            reader.readAsDataURL(audioBlob);
-        });
+        if (audioBlob) {
+            base64Audio = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result?.toString().split(',')[1] || '');
+                reader.readAsDataURL(audioBlob);
+            });
+        }
 
-        // Tạm thời hiển thị tin nhắn user là voice message icon
-        const userMsg: Message = { id: Date.now().toString(), text: "🎤 Đã gửi một tin nhắn thoại...", isAi: false };
+        const userMsg: Message = { 
+            id: Date.now().toString(), 
+            text: text || "🎤 Đã gửi một tin nhắn thoại...", 
+            isAi: false 
+        };
         setMessages(prev => [...prev, userMsg]);
 
         try {
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            const response = await fetchWithMonitor<{ data: { stt_recognized?: string, evaluation?: { response_bhn?: string, vietnamese_translation?: string, accuracy?: number }, audio_base64?: string, passed?: boolean } } | any>(
+            const payload: any = { topic_id: "general_greeting" };
+            if (base64Audio) {
+                payload.audio_base64 = base64Audio;
+                payload.mime_type = audioBlob!.type;
+            }
+            if (text) {
+                payload.stt_text = text;
+            }
+
+            const response = await fetchWithMonitor<{ data: any } | any>(
                 `${API_URL}/api/v1/ai/chat/speak`,
                 {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        topic_id: "general_greeting",
-                        audio_base64: base64Audio,
-                        mime_type: audioBlob.type
-                    })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
                 },
                 'genai_last_response',
-                15000 // 15 seconds timeout
+                15000
             );
 
             const dataResult = response?.data || response;
@@ -118,11 +123,11 @@ export function ChatRoom() {
                 text: evalData.response_bhn || 'Tuyệt vời. Bạn làm tốt lắm!',
                 isAi: true,
                 translation: evalData.vietnamese_translation || 'Response fallback from AI',
-                accuracy: evalData.accuracy || 100
+                accuracy: evalData.accuracy
             };
 
-            // Update user message to real text if STT is available
-            if (dataResult.stt_recognized) {
+            // Ghi đè lại lời nói bằng Text từ STT (nếu gửi bằng Voice)
+            if (!text && dataResult.stt_recognized) {
                 setMessages(prev => prev.map(m => m.id === userMsg.id ? { ...m, text: dataResult.stt_recognized } : m));
             }
             setMessages(prev => [...prev, aiFeedback]);
@@ -131,7 +136,6 @@ export function ChatRoom() {
                 triggerWinBurst();
             }
 
-            // Auto-play TTS audio
             if (dataResult.audio_base64) {
                 const audio = new Audio(dataResult.audio_base64);
                 audio.play().catch(e => console.error("Auto-play error", e));
@@ -150,6 +154,13 @@ export function ChatRoom() {
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    const handleSendText = () => {
+        if (!inputText.trim() || isProcessing) return;
+        const textToSubmit = inputText.trim();
+        setInputText('');
+        handleSend({ text: textToSubmit });
     };
 
     return (
@@ -213,52 +224,76 @@ export function ChatRoom() {
                 <div ref={messagesEndRef} className="h-4" />
             </div>
 
-            {/* Input Action Panel (One Action Rule) */}
-            <div className="pt-6 border-t border-stone-100 flex flex-col items-center justify-center bg-white relative z-10 bottom-0 pb-2">
-                <div className="text-center mb-4">
-                    <p className="text-sm font-bold text-stone-400 uppercase tracking-widest">
-                        {isRecording ? 'Đang ghi âm...' : 'Giữ để Luyện nói'}
+            {/* Input Action Panel (Voice & Text) */}
+            <div className="pt-4 px-4 sm:px-8 border-t border-stone-100 bg-white relative z-10 bottom-0 pb-6">
+                <div className="flex items-center gap-3 max-w-2xl mx-auto">
+                    {/* Text Input */}
+                    <input
+                        type="text"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSendText();
+                        }}
+                        disabled={isProcessing || isRecording}
+                        placeholder="Nhập tin nhắn..."
+                        className="flex-1 bg-stone-50 border border-stone-200 rounded-full px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all text-stone-900 placeholder-stone-400 font-medium"
+                    />
+
+                    {/* Action Button (Mic or Send) */}
+                    {inputText.trim() ? (
+                        <button
+                            onClick={handleSendText}
+                            disabled={isProcessing}
+                            className="w-12 h-12 flex-shrink-0 bg-emerald-500 text-white rounded-full flex items-center justify-center hover:bg-emerald-600 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                            <Sparkles className="w-5 h-5" />
+                        </button>
+                    ) : (
+                        <motion.button
+                            onMouseDown={handleHoldStart}
+                            onMouseUp={handleHoldEnd}
+                            onTouchStart={handleHoldStart}
+                            onTouchEnd={handleHoldEnd}
+                            onMouseLeave={handleHoldEnd}
+                            animate={isRecording ? { scale: 1.1 } : { scale: 1 }}
+                            disabled={isProcessing}
+                            className={`relative w-12 h-12 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${isProcessing ? 'bg-stone-200 cursor-not-allowed text-stone-400' :
+                                isRecording ? 'bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)]' : 'bg-stone-900 text-white hover:bg-stone-800 shadow-sm'
+                                }`}
+                        >
+                            {isRecording && (
+                                <>
+                                    <motion.div animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }} transition={{ repeat: Infinity, duration: 1.5 }} className="absolute inset-0 bg-rose-400 rounded-full blur-sm" />
+                                    <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.8, 0, 0.8] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="absolute inset-0 bg-rose-500 rounded-full" />
+                                </>
+                            )}
+                            <span className="relative z-10">
+                                {isRecording ? <AudioWaveformSmall /> : <Mic className="w-5 h-5" />}
+                            </span>
+                        </motion.button>
+                    )}
+                </div>
+                <div className="text-center mt-3">
+                    <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">
+                        {isRecording ? 'Đang ghi âm...' : 'Gõ hoặc Giữ Mic để nói'}
                     </p>
                 </div>
-
-                <motion.button
-                    onMouseDown={handleHoldStart}
-                    onMouseUp={handleHoldEnd}
-                    onTouchStart={handleHoldStart}
-                    onTouchEnd={handleHoldEnd}
-                    animate={isRecording ? { scale: 1.1 } : { scale: 1 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 10 }}
-                    disabled={isProcessing}
-                    className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all ${isProcessing ? 'bg-stone-200 cursor-not-allowed' :
-                        isRecording ? 'bg-rose-500 text-white shadow-[0_0_40px_rgba(244,63,94,0.4)]' : 'bg-stone-900 text-white shadow-xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)]'
-                        }`}
-                >
-                    {isRecording && (
-                        <>
-                            <motion.div animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }} transition={{ repeat: Infinity, duration: 1.5 }} className="absolute inset-0 bg-rose-400 rounded-full blur-md" />
-                            <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.8, 0, 0.8] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="absolute inset-0 bg-rose-500 rounded-full" />
-                        </>
-                    )}
-
-                    <span className="relative z-10">
-                        {isRecording ? <AudioWaveform /> : <Mic className="w-10 h-10" />}
-                    </span>
-                </motion.button>
             </div>
         </div>
     );
 }
 
-// Microinteraction: Audio Waveform Fake Animation
-function AudioWaveform() {
+// Microinteraction: Mini Audio Waveform Fake Animation
+function AudioWaveformSmall() {
     return (
-        <div className="flex items-center justify-center gap-1.5 h-10">
-            {[1, 2, 3, 4, 5].map((i) => (
+        <div className="flex items-center justify-center gap-[3px] h-5">
+            {[1, 2, 3].map((i) => (
                 <motion.div
                     key={i}
                     animate={{ height: ['20%', '100%', '20%'] }}
                     transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.1, ease: 'easeInOut' }}
-                    className="w-1.5 bg-white rounded-full"
+                    className="w-1 bg-white rounded-full"
                 />
             ))}
         </div>
