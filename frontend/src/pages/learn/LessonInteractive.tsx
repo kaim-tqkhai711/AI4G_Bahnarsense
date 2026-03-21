@@ -74,7 +74,7 @@ export function LessonInteractive() {
                     // Map đáp án (Từ chữ A,B,C,D lấy ra text thực sự, hoặc lấy correct_answer)
                     let textCorrectAnswer = s.correct_answer || '';
                     let type: QuestionType = isTranslating ? 'translate' : 'quiz';
-                    if (s.type === 'learn_flashcard') {
+                    if (s.type === 'learn_flashcard' || raw.word) {
                         type = 'flashcard';
                         textCorrectAnswer = 'SKIP';
                     }
