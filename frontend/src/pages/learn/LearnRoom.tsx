@@ -75,14 +75,7 @@ export function LearnRoom() {
                 // API returns { data: Lesson[] }; cache fallback may return array directly
                 const list = Array.isArray(response) ? response : (response?.data ?? []);
                 
-                const alphabetLesson: Lesson = {
-                    id: 'alphabet_intro',
-                    topic: 'Bảng chữ cái',
-                    difficulty: 1,
-                    type: 'alphabet'
-                };
-                
-                setLessons([alphabetLesson, ...list]);
+                setLessons(list);
             } catch (err) {
                 console.warn('[LearnRoom] Đang sử dụng Offline Fallback Data cho Lessons.', err);
                 setLessons([]);
@@ -215,12 +208,8 @@ export function LearnRoom() {
                                         isCompleted && "w-[72px] h-[72px] bg-[#4e9f76] border-[#3f7a5b] shadow-[0_4px_15px_rgba(78,159,118,0.3)]",
                                         isActive && "w-[84px] h-[84px] bg-[#facc15] border-[#ca8a04] shadow-[0_4px_25px_rgba(250,204,21,0.4)]"
                                     )}
-                                    // Bảng chữ cái nhảy sang /alphabet, Bài học nhảy sang /lesson/:id/intro
-                                    onClick={() => {
-                                        if (isLocked) return;
-                                        if (lesson.id === 'alphabet_intro') navigate('/alphabet');
-                                        else navigate(`/lesson/${lesson.id}/intro`);
-                                    }}
+                                    // Chuyển hướng sang màn Intro trước khi học
+                                    onClick={() => !isLocked && navigate(`/lesson/${lesson.id}/intro`)}
                                 >
                                     {isCompleted && !isActive && <Check className="w-8 h-8 stroke-[4]" />}
                                     {isLocked && (

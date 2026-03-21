@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from 'react-router-dom';
-import { BookOpen, Repeat, Users, BookMarked, MessageCircle, LogOut, ShoppingCart } from 'lucide-react';
+import { BookOpen, Repeat, Users, BookMarked, MessageCircle, LogOut, ShoppingCart, Library } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useUserStore } from '../store/useUserStore';
@@ -9,6 +9,7 @@ import { SmartReviewReminder } from '../components/SmartReviewReminder';
 
 const TABS = [
     { path: '/', label: 'Học tiếng', icon: BookOpen },
+    { path: '/vocabulary', label: 'Từ vựng', icon: Library },
     { path: '/review', label: 'Củng cố', icon: Repeat },
     { path: '/community', label: 'Cộng đồng', icon: Users },
     { path: '/stories', label: 'Đọc truyện', icon: BookMarked },
