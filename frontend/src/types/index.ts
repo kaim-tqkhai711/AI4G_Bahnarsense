@@ -17,7 +17,7 @@ export type UserState = {
     isGuest?: boolean;
 };
 
-export type LessonType = 'vocab' | 'grammar' | 'pronunciation' | 'vocabulary';
+export type LessonType = 'vocab' | 'grammar' | 'pronunciation' | 'vocabulary' | 'alphabet';
 
 export type Lesson = {
     id: string;

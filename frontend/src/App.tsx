@@ -13,6 +13,7 @@ import { CommunityRoom } from './pages/community/CommunityRoom';
 import { StoriesRoom } from './pages/stories/StoriesRoom';
 import { ChatRoom } from './pages/chat/ChatRoom';
 import { ShopRoom } from './pages/shop/ShopRoom';
+import { AlphabetPractice } from './pages/learn/AlphabetPractice';
 import { AdminRoom } from './pages/admin/AdminRoom';
 import { useUserStore } from './store/useUserStore';
 
@@ -50,6 +51,7 @@ function AppRoutes() {
         {/* Protected Routes inside MainLayout */}
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="/" element={<LearnRoom />} />
+          <Route path="/alphabet" element={<AlphabetPractice />} />
           <Route path="/lesson/:id/intro" element={<LessonIntro />} /> {/* Added LessonIntro Route */}
           <Route path="/lesson/:id/interactive" element={<LessonInteractive />} />
           <Route path="/lesson/:id/rewards" element={<RewardsScreen />} />
