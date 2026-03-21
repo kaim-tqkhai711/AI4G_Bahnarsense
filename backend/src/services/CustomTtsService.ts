@@ -33,12 +33,18 @@ export class CustomTtsService {
 
         console.log(`[CustomTtsService] Cache MISS. Generating Edge TTS for: "${text.substring(0, 20)}..."`);
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
+            const command = process.platform === 'win32' ? 'python' : 'python3';
             const scriptPath = path.join(__dirname, '../scripts/edge_tts_generator.py');
-            const pyProcess = spawn('python', [scriptPath]);
+            const pyProcess = spawn(command, [scriptPath]);
             
             let stdoutData = '';
             let stderrData = '';
+
+            pyProcess.on('error', (err) => {
+                console.error(`[CustomTtsService] Failed to start subprocess: ${err.message}`);
+                resolve(""); 
+            });
 
             pyProcess.stdout.on('data', (data) => {
                 stdoutData += data.toString('utf-8');
@@ -50,15 +56,21 @@ export class CustomTtsService {
 
             pyProcess.on('close', (code) => {
                 try {
+                    if (!stdoutData.trim()) {
+                        console.error(`[CustomTtsService] Edge TTS Empty Output. Stderr: ${stderrData}`);
+                        return resolve("");
+                    }
                     const result = JSON.parse(stdoutData.trim());
                     if (result.success && result.audio_base64) {
                         this.cache.set(textHash, result.audio_base64);
                         resolve(result.audio_base64);
                     } else {
-                        reject(new Error(`Edge TTS Error: ${result.error || 'Unknown'}`));
+                        console.error(`[CustomTtsService] Edge TTS Error: ${result.error || 'Unknown'}`);
+                        resolve("");
                     }
                 } catch (e) {
-                    reject(new Error(`Python parse error in TTS: ${stderrData} || ${stdoutData}`));
+                    console.error(`[CustomTtsService] Python parse error in TTS: ${stderrData} || ${stdoutData}`);
+                    resolve("");
                 }
             });
 
@@ -67,8 +79,13 @@ export class CustomTtsService {
                 voice: voice
             });
             
-            pyProcess.stdin.write(payload, 'utf-8');
-            pyProcess.stdin.end();
+            try {
+                pyProcess.stdin.write(payload, 'utf-8');
+                pyProcess.stdin.end();
+            } catch(e) {
+                console.error("[CustomTtsService] Failed to write to python stdin", e);
+                resolve("");
+            }
         });
     }
 }
