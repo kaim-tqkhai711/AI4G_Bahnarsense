@@ -18,7 +18,7 @@ export class ReviewService {
         if (itemIds.length > 0) {
             const { data: lessonsData } = await supabase
                 .from('lessons')
-                .select('lesson_id, content, description')
+                .select('lesson_id, content, description, type, correct_answer')
                 .in('lesson_id', itemIds);
                 
             if (lessonsData) {
@@ -38,7 +38,11 @@ export class ReviewService {
                         item_id: task.item_id,
                         word: wordStr,
                         meaning: meaningStr,
-                        errorCount: task.error_count || 1
+                        errorCount: task.error_count || 1,
+                        lesson_type: lesson?.type || 'quiz',
+                        content: lesson ? (typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content || {}) : {},
+                        description: lesson?.description || '',
+                        correct_answer: lesson?.correct_answer || ''
                     };
                 });
             }

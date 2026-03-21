@@ -6,7 +6,7 @@ import { fetchWithMonitor, trackEvent } from '../../lib/monitor';
 import { useUserStore } from '../../store/useUserStore';
 
 // --- MAPPED DATA CÂU HỎI TỪ BACKEND ---
-type QuestionType = 'quiz' | 'translate' | 'flashcard';
+type QuestionType = 'quiz' | 'translate' | 'flashcard' | 'dialogue';
 
 interface Question {
     id: string;
@@ -22,6 +22,15 @@ interface Question {
         image_url?: string;
         example_viet?: string;
         example_bahnar?: string;
+    };
+    dialogueData?: {
+        title: string;
+        lines: Array<{
+            speaker: string;
+            viet: string;
+            bahnar: string;
+            audio_api?: string;
+        }>;
     };
 }
 
@@ -77,12 +86,15 @@ export function LessonInteractive() {
                     if (s.type === 'learn_flashcard' || raw.word) {
                         type = 'flashcard';
                         textCorrectAnswer = 'SKIP';
+                    } else if (raw.lines) {
+                        type = 'dialogue';
+                        textCorrectAnswer = 'SKIP';
                     }
 
                     return {
                         id: s.lesson_id || Math.random().toString(),
                         type,
-                        prompt: raw.question || 'Học từ vựng mới',
+                        prompt: raw.dialogue_title || raw.question || 'Bài học mới',
                         options: opts.length > 0 ? opts : ['Đã hiểu', 'Nghe lại'], // Fallback options cho learn_flashcard
                         correctAnswer: textCorrectAnswer,
                         hint: raw.hint || raw.meaning || 'Hãy thử lại nhé!',
@@ -93,6 +105,10 @@ export function LessonInteractive() {
                             image_url: raw.image_url,
                             example_viet: raw.example_viet,
                             example_bahnar: raw.example_bahnar
+                        } : undefined,
+                        dialogueData: type === 'dialogue' ? {
+                            title: raw.dialogue_title || s.title || 'Đoạn hội thoại',
+                            lines: raw.lines
                         } : undefined
                     };
                 });
@@ -214,10 +230,63 @@ export function LessonInteractive() {
             {/* In-Lesson Workspace */}
             <div className="flex-1 px-6 pt-8 pb-10 flex flex-col max-w-lg mx-auto w-full">
 
-                {question.type !== 'flashcard' && (
+                {question.type !== 'flashcard' && question.type !== 'dialogue' && (
                     <h1 className="text-2xl font-black text-stone-800 mb-8">
                         {question.prompt}
                     </h1>
+                )}
+
+                {/* Question Type: Dialogue */}
+                {question.type === 'dialogue' && question.dialogueData && (
+                    <div className="flex flex-col w-full h-[60vh] max-h-[600px] overflow-hidden">
+                        <div className="bg-white border-2 border-stone-200 rounded-[2rem] p-4 flex flex-col flex-1 shadow-sm relative overflow-hidden">
+                            <h2 className="text-xl font-bold text-stone-800 mb-4 text-center border-b-2 border-stone-100 pb-3">{question.dialogueData.title}</h2>
+                            <div className="flex-1 overflow-y-auto space-y-5 pr-2 pb-4 scrollbar-thin scrollbar-thumb-stone-200 scrollbar-track-transparent">
+                                {question.dialogueData.lines.map((line, idx) => {
+                                    const isLeft = idx % 2 === 0;
+                                    return (
+                                        <div key={idx} className={`flex w-full ${isLeft ? 'justify-start' : 'justify-end'}`}>
+                                            <div className={`max-w-[85%] flex flex-col ${isLeft ? 'items-start' : 'items-end'}`}>
+                                                <span className="text-xs font-bold text-stone-400 mb-1 px-1">{line.speaker}</span>
+                                                <div className={`p-4 rounded-2xl relative group shadow-sm ${isLeft ? 'bg-stone-100 text-stone-800 rounded-tl-sm' : 'bg-sky-500 text-white rounded-tr-sm'}`}>
+                                                    <p className="font-bold text-lg">{line.bahnar}</p>
+                                                    <p className={`text-sm mt-1 opacity-90 ${isLeft ? 'text-stone-500' : 'text-sky-100'}`}>{line.viet}</p>
+                                                    
+                                                    {line.audio_api && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                                                                const audio = new Audio(`${API_URL}${line.audio_api}`);
+                                                                audio.play().catch(e => console.error(e));
+                                                            }}
+                                                            className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all p-2 rounded-full shadow-md hover:scale-110 active:scale-95 ${isLeft ? '-right-12 bg-white text-sky-500 border border-stone-200' : '-left-12 bg-white text-sky-500 border border-stone-200'}`}
+                                                        >
+                                                            <Volume2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 w-full mt-6 flex-shrink-0">
+                            <button
+                                onClick={() => {
+                                    setStatus('idle');
+                                    setSelectedAnswer('Đã hiểu');
+                                }}
+                                className={`w-full p-4 rounded-2xl border-2 text-center font-bold text-lg transition-all
+                                    ${selectedAnswer === 'Đã hiểu' ? 'border-[#58cc02] bg-green-50 text-[#58cc02]' : 'border-stone-200 text-stone-700 bg-white hover:bg-stone-50'}
+                                `}
+                                style={{ borderBottomWidth: selectedAnswer === 'Đã hiểu' ? '2px' : '4px', transform: selectedAnswer === 'Đã hiểu' ? 'translateY(2px)' : 'none' }}
+                            >
+                                Đã hiểu đoạn hội thoại
+                            </button>
+                        </div>
+                    </div>
                 )}
 
                 {/* Question Type: Flashcard */}

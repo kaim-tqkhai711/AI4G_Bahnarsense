@@ -33,4 +33,8 @@ export type Mistake = {
     word: string;
     meaning: string;
     errorCount: number;
+    lesson_type?: string;
+    content?: any;
+    description?: string;
+    correct_answer?: string;
 };
