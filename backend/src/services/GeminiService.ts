@@ -60,16 +60,20 @@ Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không có ma
      */
     async scorePronunciation(audioBase64: string, mimeType: string, expectedText: string) {
         const prompt = `
-Bạn là chuyên gia ngôn ngữ tiếng Ba Na/Việt Nam.
-Học sinh vừa được yêu cầu đọc từ/câu sau: "${expectedText}".
-Hãy lắng nghe đoạn âm thanh Base64 và đánh giá xem họ phát âm sai những từ cụ thể nào trong câu gốc.
-Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON EXACTLY (Không markdown ngầm):
+Bạn là chuyên gia ngôn ngữ tiếng Ba Na/Việt Nam VÔ CÙNG KHÓ TÍNH VÀ NGHIÊM NGẶT.
+Học sinh vừa được giao đọc từ/câu sau: "${expectedText}".
+Hãy lắng nghe đoạn âm thanh Base64 truyền vào và CHẤM ĐIỂM CHẶT CHẼ theo các luật sau:
+
+LUẬT CHẤM ĐIỂM BẮT BUỘC (STRICT ALIGNMENT):
+1. NẾU âm thanh là tiếng ồn, MỚI VÀO ĐÃ ĐỌC HOÀN TOÀN SAI LỆCH HOẶC ĐỌC MỘT CÂU KHÔNG CÓ TRONG VĂN BẢN GỐC: Bạn BẮT BUỘC cho "score": 0 và đẩy TOÀN BỘ các từ của câu gốc vào mảng "wrong_words". Tuyệt đối không được khoan nhượng hay tự dối lòng.
+2. Từ nào đọc sai âm, nói ngọng, thiếu âm cuối, hoặc nuốt chữ: trừ điểm tương ứng và đưa từ đó đích danh vào mảng "wrong_words".
+3. Trả về phản hồi CHỈ DƯỚI ĐỊNH DẠNG JSON (Không có markdown block \`\`\`json):
 {
-  "score": <number từ 0-100 đánh giá độ trôi chảy>,
-  "wrong_words": ["mảng", "chứa", "các", "từ", "bị", "đọc", "sai", "hoặc", "nuốt", "âm"],
-  "feedback": "<nhận xét ngắn gọn khích lệ>"
+  "score": <number từ 0-100 đánh giá độ trôi chảy thực tế>,
+  "wrong_words": ["các", "từ", "bị", "đọc", "sai"],
+  "feedback": "<nhận xét lỗi sai để họ sửa chữa>"
 }
-Nếu học sinh đọc đúng hoàn toàn, hãy để mảng wrong_words rỗng [].
+Nếu học sinh đọc đúng hoàn toàn trôi chảy 100%, hãy để mảng wrong_words rỗng [].
 `;
         // Gemini 1.5 Flash hỗ trợ Multimodal audio
         const response = await ai.models.generateContent({

@@ -11,7 +11,8 @@ export class ReviewRepository {
 
         const nextReviewFactor = existing?.error_count ? (existing.error_count as number) + 1 : 1;
         const nextReviewDate = new Date();
-        nextReviewDate.setDate(nextReviewDate.getDate() + nextReviewFactor);
+        // Cho thẻ mới (factor = 1) hiện ngay lập tức (ngày + 0). Thẻ sai nhiều lần (factor > 1) sẽ bị giãn ngày.
+        nextReviewDate.setDate(nextReviewDate.getDate() + (nextReviewFactor - 1));
 
         const payload = {
             user_id: uid,

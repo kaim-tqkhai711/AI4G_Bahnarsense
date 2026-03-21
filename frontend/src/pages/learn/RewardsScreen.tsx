@@ -44,9 +44,9 @@ export function RewardsScreen() {
                             Authorization: `Bearer ${token}`
                         },
                         body: JSON.stringify({
-                            lessonId: id || 'cd1_l1',
-                            questionId: 'completion',
-                            userAnswer: 'done',
+                            lesson_id: id || 'cd1_l1',
+                            question_id: 'completion',
+                            user_answer: 'done',
                             correctCount: correctCount,
                             totalQuestions: totalQuestions
                         })
@@ -58,9 +58,15 @@ export function RewardsScreen() {
                 trackEvent('lesson_completed', { lessonId: id, stars: earnedSao });
                 
                 // Cập nhật điểm sao và XP ngay trên giao diện nội bộ
+                const currentCompleted = user?.completedLessons || [];
+                const currentId = id || 'cd1_l1';
+                
                 updateUser({
                     sao_vang: (user?.sao_vang || 0) + earnedSao,
-                    xp: (user?.xp || 0) + earnedSao * 2
+                    xp: (user?.xp || 0) + earnedSao * 2,
+                    completedLessons: currentCompleted.includes(currentId) 
+                        ? currentCompleted 
+                        : [...currentCompleted, currentId]
                 });
             } catch (err) {
                 console.error("[RewardsScreen] Error saving progress", err);

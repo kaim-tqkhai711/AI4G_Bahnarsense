@@ -46,9 +46,8 @@ export class CustomTtsService {
             });
 
             if (!response.ok) {
-                console.warn(`[CustomTtsService] API error: ${response.status}. Fallback string returned.`);
-                // Fallback tạm thời nếu API sập (vì đang train chưa xong)
-                return this.createMockAudio();
+                console.warn(`[CustomTtsService] API error: ${response.status}. Throwing error instead of mock.`);
+                throw new Error("TTS API is offline or responding with error");
             }
 
             const data = await response.json();
@@ -59,20 +58,13 @@ export class CustomTtsService {
                 this.cache.set(textHash, audioBase64);
                 return audioBase64;
             } else {
-                return this.createMockAudio();
+                throw new Error("Invalid TTS payload");
             }
         } catch (error) {
             console.error(`[CustomTtsService] Error fetching TTS:`, error);
-            // Fallback tĩnh khi Model chưa deploy
-            return this.createMockAudio();
+            throw error;
         }
     }
 
-    /**
-     * Dùng tạm khi Model API chưa sẵn sàng
-     */
-    private createMockAudio(): string {
-        // Return a tiny silent base64 or valid MP3 header just to not break frontend
-        return "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU5LjE2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIwAKCgoKCgoKCgoKCgoKCgoKCgoKCgoK";
-    }
+
 }

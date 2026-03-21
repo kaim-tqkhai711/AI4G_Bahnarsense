@@ -92,6 +92,22 @@ export class LessonService {
      * POST /lessons/submit
      */
     async submitAnswer(uid: string, lessonId: string, questionId: string, userAnswer: unknown, correctCount: number = 10, totalQuestions: number = 10) {
+        if (questionId === 'completion' && userAnswer === 'done') {
+            const earnedSaoVang = 50;
+            const earnedXp = 100;
+
+            await this.lessonRepository.appendLessonSuccess(uid, lessonId, earnedSaoVang, earnedXp);
+
+            return {
+                correct: true,
+                message: `Chúc mừng bạn đã hoàn thành bài học!`,
+                rewards: {
+                    xp: earnedXp,
+                    sao_vang: earnedSaoVang
+                }
+            };
+        }
+
         const lesson = await this.lessonRepository.getLessonById(lessonId)
             ?? FALLBACK_LESSONS.find(l => l.lesson_id === lessonId);
         if (!lesson) {

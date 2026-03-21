@@ -88,8 +88,12 @@ export class AiService {
      * Tính năng POST /ai/score-pronunciation
      */
     async scorePronunciation(uid: string, audioBase64: string, mimeType: string, expectedText: string) {
-        // Bước 1: Sinh Audio Chuẩn từ Custom TTS
-        const standardAudioBase64 = await this.ttsService.generateSpeech(expectedText);
+        let standardAudioBase64 = "";
+        try {
+            standardAudioBase64 = await this.ttsService.generateSpeech(expectedText);
+        } catch (error) {
+            console.warn("[AiService] Bỏ qua DTW Score do TTS Server tắt mạng.");
+        }
 
         // Bước 2 & 3: Gọi Python DTW song song với Gemini nhận diện từ sai
         const [dtwResult, geminiResult] = await Promise.all([

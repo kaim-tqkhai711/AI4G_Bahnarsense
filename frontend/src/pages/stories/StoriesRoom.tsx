@@ -208,18 +208,39 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
         if (!selectedWord) return;
         setIsPlaying(true);
         try {
+            const dictEntry = story.dictionary[selectedWord];
+            
+            // 1. Nếu từ điển đã có sẵn file âm thanh thật (Phương án 1 - Supabase)
+            if (dictEntry && dictEntry.audioUrl && !dictEntry.audioUrl.includes('mock.mp3')) {
+                const audio = new Audio(dictEntry.audioUrl);
+                await audio.play();
+                // Chờ audio phát xong để tắt icon Loading
+                await new Promise(resolve => audio.onended = resolve);
+                return;
+            }
+
+            // 2. Nếu từ chưa được gán file thu âm, gọi chữa cháy bằng AI TTS
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
             const res = await fetch(`${API_URL}/api/v1/ai/pronounce?word=${encodeURIComponent(selectedWord)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            
+            if (!res.ok) {
+                throw new Error("Server AI phát âm hiện đang tắt");
+            }
+
             const data = await res.json();
             const base64Audio = data.data?.audio_base64 || data.audio_base64;
             if (base64Audio) {
                 const audio = new Audio(base64Audio);
                 await audio.play();
+                await new Promise(resolve => audio.onended = resolve);
+            } else {
+                throw new Error("Không có Audio Base64");
             }
         } catch(e) {
             console.error("Lỗi khi nghe mẫu", e);
+            alert("⚠️ Âm thanh mẫu chưa sẵn sàng (Vui lòng tự giác luyện đọc).");
         } finally {
             setIsPlaying(false);
         }
