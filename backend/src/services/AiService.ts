@@ -64,29 +64,44 @@ export class AiService {
      * Tính năng POST /ai/chat/speak
      */
     async chatSpeak(uid: string, topicId: string, audioBase64?: string, mimeType?: string, sttText?: string) {
-        let textToEvaluate = sttText || "";
-
-        // Multimodal Gemini: Vừa nghe vừa phán đoán.
-        const geminiResult = await this.geminiService.evaluatePronunciation(textToEvaluate, topicId, audioBase64, mimeType);
-
-        // Màng lọc 1: Xử lý NLP trên đoạn trả về Ba Na
-        const cleanResponse = this.nlpRules.cleanChatbotResponse(geminiResult.response_bhn);
-        geminiResult.response_bhn = cleanResponse;
-
-        // Màng lọc TTS: Nhét text Ba Na (sạch) vào Custom TTS Model
-        let responseAudioBase64 = "";
         try {
-            responseAudioBase64 = await this.ttsService.generateSpeech(cleanResponse);
-        } catch (error) {
-            console.warn("[AiService] Lỗi TTS Server trong khi Chat:", error);
-        }
+            let textToEvaluate = sttText || "";
 
-        return {
-            stt_recognized: textToEvaluate || "Voice detected via Audio",
-            evaluation: geminiResult,
-            audio_base64: responseAudioBase64 ? `data:audio/mp3;base64,${responseAudioBase64}` : null,
-            passed: geminiResult.accuracy >= 80
-        };
+            // Multimodal Gemini: Vừa nghe vừa phán đoán.
+            const geminiResult = await this.geminiService.evaluatePronunciation(textToEvaluate, topicId, audioBase64, mimeType);
+
+            // Màng lọc 1: Xử lý NLP trên đoạn trả về Ba Na
+            const cleanResponse = this.nlpRules.cleanChatbotResponse(geminiResult.response_bhn);
+            geminiResult.response_bhn = cleanResponse;
+
+            // Màng lọc TTS: Nhét text Ba Na (sạch) vào Custom TTS Model
+            let responseAudioBase64 = "";
+            try {
+                responseAudioBase64 = await this.ttsService.generateSpeech(cleanResponse);
+            } catch (error) {
+                console.warn("[AiService] Lỗi TTS Server trong khi Chat:", error);
+            }
+
+            return {
+                stt_recognized: textToEvaluate || "Voice detected via Audio",
+                evaluation: geminiResult,
+                audio_base64: responseAudioBase64 ? `data:audio/mp3;base64,${responseAudioBase64}` : null,
+                passed: geminiResult.accuracy >= 80
+            };
+        } catch (error: any) {
+            console.error("[AiService] Toàn cục error chatSpeak:", error);
+            return {
+                stt_recognized: sttText || "Voice detected via Audio",
+                evaluation: {
+                    accuracy: 0,
+                    response_bhn: "Xin lỗi, server AI đang có lỗi. Bạn đợi một lát rồi nói lại nhé.",
+                    vietnamese_translation: "[Kết nối AI bị lỗi mạng hoặc quá giới hạn yêu cầu]",
+                    feedback: "Lỗi nội bộ: " + (error.message || "Unidentified AI Error")
+                },
+                audio_base64: null,
+                passed: false
+            };
+        }
     }
 
     /**

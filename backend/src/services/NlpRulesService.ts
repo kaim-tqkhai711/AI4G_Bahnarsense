@@ -5,7 +5,7 @@ export class NlpRulesService {
     cleanChatbotResponse(text: string): string {
         if (!text) return "";
         
-        let cleaned = text;
+        let cleaned = String(text);
 
         // Xóa dấu hiệu Markdown thừa hoặc emoji nếu TTS không đọc được
         cleaned = cleaned.replace(/\*{1,2}/g, ''); // Xóa bold/italic
