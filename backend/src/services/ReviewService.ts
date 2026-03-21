@@ -22,29 +22,35 @@ export class ReviewService {
                 .in('lesson_id', itemIds);
                 
             if (lessonsData) {
-                tasks = tasks.map((task: any) => {
+                const validTasks: any[] = [];
+                for (const task of tasks) {
                     const lesson = lessonsData.find((l: any) => l.lesson_id === task.item_id);
+                    
+                    if (!lesson) {
+                        console.warn(`[Review] Bỏ qua thẻ ${task.item_id} vì không tìm thấy nội dung bài học tương ứng (có thể đã bị xóa).`);
+                        continue;
+                    }
+                    
                     let wordStr = task.item_id;
                     let meaningStr = "Cần ôn tập lại";
                     
-                    if (lesson) {
-                        const content = typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content || {};
-                        wordStr = content.question || content.word || lesson.description || wordStr;
-                        meaningStr = content.meaning || content.hint || (content.options ? Object.values(content.options).join(", ") : meaningStr);
-                    }
+                    const content = typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content || {};
+                    wordStr = content.question || content.word || lesson.description || wordStr;
+                    meaningStr = content.meaning || content.hint || (content.options ? Object.values(content.options).join(", ") : meaningStr);
                     
-                    return {
+                    validTasks.push({
                         id: task.id,
                         item_id: task.item_id,
                         word: wordStr,
                         meaning: meaningStr,
                         errorCount: task.error_count || 1,
                         lesson_type: lesson?.type || 'quiz',
-                        content: lesson ? (typeof lesson.content === 'string' ? JSON.parse(lesson.content) : lesson.content || {}) : {},
+                        content: content,
                         description: lesson?.description || '',
                         correct_answer: lesson?.correct_answer || ''
-                    };
-                });
+                    });
+                }
+                tasks = validTasks;
             }
         }
 
