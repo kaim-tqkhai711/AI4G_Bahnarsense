@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Volume2, Mic, Check, Loader2, X, Star } from 'lucide-react';
+import { ChevronLeft, Volume2, Mic, Loader2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { bahnarAlphabet, AlphabetCategory } from '../../data/bahnarAlphabet';
 import { useUserStore } from '../../store/useUserStore';
