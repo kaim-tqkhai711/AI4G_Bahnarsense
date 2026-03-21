@@ -1,46 +1,69 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft, Volume2, Star, Check, Mic, Loader2 } from 'lucide-react';
 import { triggerConfetti } from '../../lib/confetti';
 import { useUserStore } from '../../store/useUserStore';
 import { fetchWithMonitor } from '../../lib/monitor';
+import { supabase } from '../../lib/supabase';
+
 type DictionaryEntry = {
     meaning: string;
     audioUrl: string;
 };
 
 export type StoryType = {
-    id: string;
+    id: number;
     title: string;
     description: string;
-    image: string;
+    image_url: string;
     tags: string[];
-    content: string;
+    content_bahnar: string;
+    content_viet: string;
     dictionary: Record<string, DictionaryEntry>;
+    quizzes: Array<{ type: string, question: string, options: string[], correct_answer: string }>;
 };
 
-const MOCK_STORIES: StoryType[] = [
-    {
-        id: 's1',
-        title: 'Sự tích Hồ Tơ-nưng',
-        description: 'Khám phá truyền thuyết về hồ nước đẹp nhất Tây Nguyên.',
-        image: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&q=80&w=600',
-        tags: ['A2', 'Truyền thuyết'],
-        content: "Bơ tơ̆k đe đe, đak Tơ-nưng dơng hmă... (Ngày xửa ngày xưa, hồ Tơ-nưng rất đẹp...).",
-        dictionary: {
-            "Bơ tơ̆k đe đe": { meaning: "Ngày xửa ngày xưa", audioUrl: "https://mock.mp3" },
-            "đak": { meaning: "nước / hồ", audioUrl: "https://mock.mp3" },
-            "Tơ-nưng": { meaning: "tên riêng (Biển Hồ)", audioUrl: "https://mock.mp3" },
-            "hmă": { meaning: "rất đẹp", audioUrl: "https://mock.mp3" }
-        }
-    }
-];
-
 export function StoriesRoom() {
-    const [activeStory, setActiveStory] = useState<string | null>(null);
+    const [stories, setStories] = useState<StoryType[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [activeStory, setActiveStory] = useState<number | null>(null);
+
+    useEffect(() => {
+        async function fetchStories() {
+            try {
+                const { data, error } = await supabase.from('ReadStoryRoom').select('*').order('id', { ascending: true });
+                if (error) throw error;
+                if (data) {
+                    // Safe parse JSON fields in case they are returned as strings
+                    const parsedData = data.map((item: any) => ({
+                        ...item,
+                        tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : item.tags,
+                        dictionary: typeof item.dictionary === 'string' ? JSON.parse(item.dictionary) : item.dictionary,
+                        quizzes: typeof item.quizzes === 'string' ? JSON.parse(item.quizzes) : item.quizzes
+                    }));
+                    setStories(parsedData as StoryType[]);
+                }
+            } catch (err) {
+                console.error("Lỗi tải truyện", err);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        fetchStories();
+    }, []);
+
+    // Màn hình loading
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full space-y-4">
+                <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
+                <p className="text-stone-500 font-bold">Đang tải thư viện truyện...</p>
+            </div>
+        );
+    }
 
     // Màn hình chọn Truyện (Grid view)
-    if (!activeStory) {
+    if (activeStory === null) {
         return (
             <div className="flex flex-col h-full w-full bg-white relative">
                 <div className="pb-6 pt-2 border-b border-stone-100 flex items-center justify-between mb-8">
@@ -51,19 +74,19 @@ export function StoriesRoom() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto pb-10">
-                    {MOCK_STORIES.map((story) => (
+                    {stories.map((story) => (
                         <motion.div
                             layoutId={`story-container-${story.id}`}
                             key={story.id}
                             onClick={() => setActiveStory(story.id)}
                             className="relative aspect-video rounded-3xl overflow-hidden cursor-pointer shadow-sm group border border-stone-100"
                         >
-                            <img src={story.image} alt={story.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                            <img src={story.image_url} alt={story.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                             <div className="absolute inset-0 bg-gradient-to-t from-stone-900/90 via-stone-900/40 to-transparent" />
 
                             <div className="absolute bottom-0 left-0 right-0 p-5">
-                                <div className="flex gap-2 mb-2">
-                                    {story.tags.map(tag => (
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {story.tags && story.tags.map(tag => (
                                         <span key={tag} className="px-2 py-0.5 rounded-md bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider">
                                             {tag}
                                         </span>
@@ -74,12 +97,18 @@ export function StoriesRoom() {
                             </div>
                         </motion.div>
                     ))}
+                    
+                    {stories.length === 0 && (
+                        <div className="col-span-full text-center py-20 text-stone-500">
+                            Chưa có truyện nào trong thư viện.
+                        </div>
+                    )}
                 </div>
             </div>
         );
     }
 
-    const story = MOCK_STORIES.find(s => s.id === activeStory)!;
+    const story = stories.find(s => s.id === activeStory)!;
 
     // --- SCREEN: READER VIEW ---
     return <StoryReader story={story} onClose={() => setActiveStory(null)} />;
@@ -99,9 +128,15 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
 
+    const [showQuiz, setShowQuiz] = useState(false);
+
+    if (showQuiz && story.quizzes && story.quizzes.length > 0) {
+        return <StoryQuiz quizzes={story.quizzes} onClose={onClose} storyTitle={story.title} />;
+    }
+
     // Tách chuỗi thành mảng các từ, ưu tiên cụm từ trong từ điển (Mock logic: Split by space)
     // Ở bản Real: Ta sẽ map content bằng Regex tìm match key keys(dictionary).
-    const words = story.content.split(' ');
+    const words = story.content_bahnar ? story.content_bahnar.split(' ') : [];
 
     const handleWordClick = (wordRaw: string) => {
         // Clear punctuation for dictionary lookup
@@ -267,8 +302,9 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
 
                     <div className="text-xl md:text-2xl leading-loose text-stone-800 space-x-2">
                         {words.map((w: string, i: number) => {
-                            const cleanW = w.replace(/[.,()]/g, '');
-                            const isLookupable = story.dictionary[cleanW] || (cleanW === "Bơ" && story.dictionary["Bơ tơ̆k đe đe"]);
+                            const cleanW = w.replace(/[.,()!?]/g, '');
+                            const dictionary = story.dictionary || {};
+                            const isLookupable = dictionary[cleanW] || (cleanW === "Bơ" && dictionary["Bơ tơ̆k đe đe"]);
 
                             return (
                                 <span
@@ -282,6 +318,30 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                             );
                         })}
                     </div>
+
+                    {/* Tiếng Việt Translation */}
+                    {story.content_viet && (
+                        <div className="mt-16 p-6 md:p-8 bg-stone-50 rounded-[2rem] border border-stone-200/60 relative">
+                            <span className="absolute -top-3 left-6 bg-stone-200 text-stone-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-stone-300/50">
+                                Bản dịch Tiếng Việt
+                            </span>
+                            <p className="text-lg md:text-xl text-stone-600 leading-relaxed italic">
+                                {story.content_viet}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Quiz Button */}
+                    {story.quizzes && story.quizzes.length > 0 && (
+                        <div className="mt-16 flex justify-center pb-20">
+                            <button 
+                                onClick={() => setShowQuiz(true)}
+                                className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-bold text-lg shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95 transition-transform"
+                            >
+                                Hoàn thành & Làm Bài trắc nghiệm
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -389,6 +449,99 @@ function StoryReader({ story, onClose }: { story: StoryType, onClose: () => void
                     />
                 )}
             </AnimatePresence>
+        </motion.div>
+    );
+}
+
+// Quiz component
+function StoryQuiz({ quizzes, onClose, storyTitle }: { quizzes: StoryType['quizzes'], onClose: () => void, storyTitle: string }) {
+    const [currentIdx, setCurrentIdx] = useState(0);
+    const [selectedOpt, setSelectedOpt] = useState<string | null>(null);
+    const [isFinished, setIsFinished] = useState(false);
+
+    const quiz = quizzes[currentIdx];
+
+    const handleNext = (opt: string) => {
+        setSelectedOpt(opt);
+        setTimeout(() => {
+            if (currentIdx < quizzes.length - 1) {
+                setCurrentIdx(prev => prev + 1);
+                setSelectedOpt(null);
+            } else {
+                setIsFinished(true);
+                triggerConfetti();
+            }
+        }, 1000);
+    };
+
+    if (isFinished) {
+         return (
+             <motion.div 
+                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                 className="absolute inset-0 z-50 bg-[#FDFBF7] flex flex-col items-center justify-center font-serif text-center p-8 rounded-[2rem]"
+             >
+                 <div className="w-24 h-24 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-6">
+                     <Star className="w-12 h-12 fill-current" />
+                 </div>
+                 <h2 className="text-3xl font-bold text-stone-900 mb-4">Tuyệt vời!</h2>
+                 <p className="text-stone-500 mb-8 max-w-sm">Bạn đã đọc xong truyện "{storyTitle}" và hoàn thành xuất sắc các bài tập.</p>
+                 <button onClick={onClose} className="px-8 py-4 bg-stone-900 text-white rounded-2xl font-bold border-2 border-stone-900 hover:bg-white hover:text-stone-900 transition-colors">
+                     Quay về thư viện Truyện
+                 </button>
+             </motion.div>
+         )
+    }
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute inset-0 z-50 bg-[#FDFBF7] flex flex-col font-serif rounded-[2rem] overflow-hidden shadow-2xl"
+        >
+             <div className="px-6 py-4 flex items-center justify-between sticky top-0 bg-[#FDFBF7]/90 backdrop-blur-md border-b border-stone-200/50">
+                <button onClick={onClose} className="p-2 -ml-2 bg-stone-100 rounded-full text-stone-600 hover:bg-stone-200 transition-colors">
+                    <X className="w-5 h-5" />
+                </button>
+                <div className="flex gap-2">
+                    {quizzes.map((_, i) => (
+                        <div key={i} className={`h-2 rounded-full transition-all duration-500 ${i === currentIdx ? 'w-8 bg-emerald-500' : i < currentIdx ? 'w-4 bg-emerald-200' : 'w-4 bg-stone-200'}`} />
+                    ))}
+                </div>
+                <div className="w-9" />
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 max-w-2xl mx-auto w-full">
+                <span className="text-emerald-500 font-bold tracking-wider uppercase text-sm mb-4 bg-emerald-50 px-3 py-1 rounded-full">Câu hỏi {currentIdx + 1}/{quizzes.length}</span>
+                <h3 className="text-2xl md:text-3xl font-bold text-stone-900 text-center mb-10 leading-tight">
+                    {quiz.question}
+                </h3>
+
+                <div className="w-full flex flex-col gap-4">
+                    {quiz.options.map((opt, idx) => {
+                        const isSelected = selectedOpt === opt;
+                        const isCorrect = isSelected && opt === quiz.correct_answer;
+                        
+                        return (
+                             <button
+                                key={idx}
+                                onClick={() => {
+                                    if (selectedOpt) return;
+                                    if (opt === quiz.correct_answer) {
+                                        handleNext(opt); 
+                                    } else {
+                                        setSelectedOpt(opt);
+                                        setTimeout(() => setSelectedOpt(null), 800);
+                                    }
+                                }}
+                                className={`w-full p-5 rounded-2xl border-2 text-left font-bold text-lg transition-all active:scale-95
+                                   ${isSelected ? (isCorrect ? 'bg-emerald-50 border-emerald-500 text-emerald-600' : 'bg-rose-50 border-rose-500 text-rose-600 translate-x-1') : 'border-stone-200 text-stone-700 hover:border-emerald-200 hover:bg-emerald-50/50'}`}
+                             >
+                                 {opt}
+                             </button>
+                        );
+                    })}
+                </div>
+            </div>
         </motion.div>
     );
 }
