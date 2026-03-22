@@ -82,6 +82,24 @@ export function LessonInteractive() {
 
                     // Map đáp án (Từ chữ A,B,C,D lấy ra text thực sự, hoặc lấy correct_answer)
                     let textCorrectAnswer = s.correct_answer || '';
+                    const answerLabel = typeof textCorrectAnswer === 'string' ? textCorrectAnswer.trim().toUpperCase() : '';
+                    if (['A', 'B', 'C', 'D'].includes(answerLabel)) {
+                        if (raw.options) {
+                            if (Array.isArray(raw.options)) {
+                                const index = answerLabel.charCodeAt(0) - 65; // A=0, B=1, ...
+                                if (raw.options[index]) textCorrectAnswer = raw.options[index];
+                            } else if (typeof raw.options === 'object') {
+                                if (raw.options[answerLabel]) {
+                                    textCorrectAnswer = raw.options[answerLabel];
+                                } else {
+                                    const vals = Object.values(raw.options);
+                                    const index = answerLabel.charCodeAt(0) - 65;
+                                    if (vals[index]) textCorrectAnswer = vals[index] as string;
+                                }
+                            }
+                        }
+                    }
+
                     let type: QuestionType = isTranslating ? 'translate' : 'quiz';
                     if (s.type === 'learn_flashcard' || raw.word) {
                         type = 'flashcard';

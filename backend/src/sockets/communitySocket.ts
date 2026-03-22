@@ -171,11 +171,29 @@ export const setupCommunitySocket = (io: Server) => {
                         (lessons || []).forEach(l => {
                             const content = typeof l.content === 'string' ? JSON.parse(l.content) : l.content;
                             if (l.type === 'vocabulary' || l.type === 'grammar') {
+                                let textCorrect = l.correct_answer || content.correctAnswer || "A";
+                                const label = typeof textCorrect === 'string' ? textCorrect.trim().toUpperCase() : '';
+                                if (['A', 'B', 'C', 'D'].includes(label)) {
+                                    if (content.options) {
+                                        if (Array.isArray(content.options)) {
+                                            const idx = label.charCodeAt(0) - 65;
+                                            if (content.options[idx]) textCorrect = content.options[idx];
+                                        } else if (typeof content.options === 'object') {
+                                            if (content.options[label]) {
+                                                textCorrect = content.options[label];
+                                            } else {
+                                                const vals = Object.values(content.options);
+                                                const idx = label.charCodeAt(0) - 65;
+                                                if (vals[idx]) textCorrect = vals[idx] as string;
+                                            }
+                                        }
+                                    }
+                                }
                                 questions.push({ 
                                     type: l.type, 
                                     data: content.question || content.word || content.structure || "Câu hỏi lỗi", 
                                     content,
-                                    correct_answer: l.correct_answer || content.correctAnswer || "A" 
+                                    correct_answer: textCorrect
                                 });
                             }
                         });
@@ -187,11 +205,29 @@ export const setupCommunitySocket = (io: Server) => {
                             let fallbackQuestions: any[] = [];
                             (randLessons || []).forEach(l => {
                                 const content = typeof l.content === 'string' ? JSON.parse(l.content) : l.content;
+                                let textCorrect = l.correct_answer || content.correctAnswer || "A";
+                                const label = typeof textCorrect === 'string' ? textCorrect.trim().toUpperCase() : '';
+                                if (['A', 'B', 'C', 'D'].includes(label)) {
+                                    if (content.options) {
+                                        if (Array.isArray(content.options)) {
+                                            const idx = label.charCodeAt(0) - 65;
+                                            if (content.options[idx]) textCorrect = content.options[idx];
+                                        } else if (typeof content.options === 'object') {
+                                            if (content.options[label]) {
+                                                textCorrect = content.options[label];
+                                            } else {
+                                                const vals = Object.values(content.options);
+                                                const idx = label.charCodeAt(0) - 65;
+                                                if (vals[idx]) textCorrect = vals[idx] as string;
+                                            }
+                                        }
+                                    }
+                                }
                                 fallbackQuestions.push({ 
                                     type: l.type, 
                                     data: content.question || content.word || content.structure || "Câu hỏi lỗi", 
                                     content,
-                                    correct_answer: l.correct_answer || content.correctAnswer || "A" 
+                                    correct_answer: textCorrect
                                 });
                             });
                             questions = fallbackQuestions.sort(() => 0.5 - Math.random()).slice(0, 10);

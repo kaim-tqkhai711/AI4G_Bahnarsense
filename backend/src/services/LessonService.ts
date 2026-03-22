@@ -114,8 +114,28 @@ export class LessonService {
             throw new Error('Lesson not found');
         }
 
-        const correctAnswer = (lesson as { correct_answer?: string }).correct_answer ?? (lesson as { correctAnswer?: string }).correctAnswer;
-        if (userAnswer !== correctAnswer) {
+        let correctAnswer = (lesson as { correct_answer?: string }).correct_answer ?? (lesson as { correctAnswer?: string }).correctAnswer;
+        const rawContent = typeof (lesson as any).content === 'string' ? JSON.parse((lesson as any).content) : (lesson as any).content;
+        
+        let isCorrect = (userAnswer === correctAnswer);
+
+        // Map label (A, B, C, D) to actual text if necessary
+        const label = typeof correctAnswer === 'string' ? correctAnswer.trim().toUpperCase() : '';
+        if (!isCorrect && ['A', 'B', 'C', 'D'].includes(label) && rawContent?.options) {
+            let mappedText = '';
+            if (Array.isArray(rawContent.options)) {
+                const idx = label.charCodeAt(0) - 65;
+                mappedText = rawContent.options[idx];
+            } else if (typeof rawContent.options === 'object') {
+                mappedText = rawContent.options[label] || Object.values(rawContent.options)[label.charCodeAt(0) - 65] as string;
+            }
+            
+            if (mappedText && userAnswer === mappedText) {
+                isCorrect = true;
+            }
+        }
+
+        if (!isCorrect) {
             return {
                 correct: false,
                 hint: 'Sai rồi! Hãy thử suy nghĩ lại về ngữ cảnh của từ này nhé.',
