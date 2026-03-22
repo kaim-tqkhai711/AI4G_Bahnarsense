@@ -20,4 +20,25 @@ router.get('/friends/search', asyncErrorWrapper(controller.searchFriend.bind(con
 // POST /api/v1/community/friends/add
 router.post('/friends/add', asyncErrorWrapper(controller.addFriend.bind(controller)));
 
+// GET /api/v1/community/friends
+router.get('/friends', asyncErrorWrapper(controller.getFriends.bind(controller)));
+
+// GET /api/v1/community/friends/requests
+router.get('/friends/requests', asyncErrorWrapper(controller.getFriendRequests.bind(controller)));
+
+// POST /api/v1/community/friends/accept
+router.post('/friends/accept', asyncErrorWrapper(controller.acceptFriend.bind(controller)));
+
+// POST /api/v1/community/friends/decline
+router.post('/friends/decline', asyncErrorWrapper(controller.declineFriend.bind(controller)));
+
+// POST /api/v1/community/buddy/invite
+router.post('/buddy/invite', asyncErrorWrapper(controller.inviteBuddy.bind(controller)));
+
+// GET /api/v1/community/buddy
+router.get('/buddy', asyncErrorWrapper(controller.getBuddyProgress.bind(controller)));
+
+// POST /api/v1/community/buddy/cancel
+router.post('/buddy/cancel', asyncErrorWrapper(controller.cancelBuddy.bind(controller)));
+
 export default router;
