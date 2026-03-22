@@ -40,12 +40,26 @@ export const setupCommunitySocket = (io: Server) => {
                         
                         if (winnerId) {
                             try {
-                                const { data: profile } = await supabase.from('profiles').select('sao_vang, win_count').eq('id', winnerId).single();
-                                if (profile) {
-                                    const sao = Number(profile.sao_vang ?? 0) + (room.wager * 2);
-                                    const wins = Number(profile.win_count ?? 0) + 1;
-                                    await supabase.from('profiles').update({ sao_vang: sao, win_count: wins }).eq('id', winnerId);
+                                // Reward winner with 2x wager (with fallback in case win_count column missing)
+                                try {
+                                    const { data: profile } = await supabase.from('profiles').select('sao_vang, win_count').eq('id', winnerId).single();
+                                    if (profile) {
+                                        const sao = Number(profile.sao_vang ?? 0) + (Number(room.wager) * 2);
+                                        const updatePayload: any = { sao_vang: sao };
+                                        if (profile.win_count !== undefined) {
+                                            updatePayload.win_count = Number(profile.win_count ?? 0) + 1;
+                                        }
+                                        await supabase.from('profiles').update(updatePayload).eq('id', winnerId);
+                                    }
+                                } catch (dbError) {
+                                    console.error('[Disconnect] Lỗi update profile, fallback sao_vang only:', dbError);
+                                    const { data: pSafe } = await supabase.from('profiles').select('sao_vang').eq('id', winnerId).single();
+                                    if (pSafe) {
+                                        const sao = Number(pSafe.sao_vang ?? 0) + (Number(room.wager) * 2);
+                                        await supabase.from('profiles').update({ sao_vang: sao }).eq('id', winnerId);
+                                    }
                                 }
+
                                 if (room.matchId) {
                                     await supabase.from('matches').update({ status: 'finished', winner_id: winnerId, finished_at: new Date().toISOString() }).eq('id', room.matchId);
                                 }
@@ -168,13 +182,30 @@ export const setupCommunitySocket = (io: Server) => {
                     }
 
                     if (questions.length < 5) {
-                        questions = [
-                            { type: 'vocab', data: "Tìm từ nối..." },
-                            { type: 'grammar', data: "Điền vào..." },
-                            { type: 'vocab', data: "Dịch câu..." },
-                            { type: 'vocab', data: "Từ đồng nghĩa..." },
-                            { type: 'grammar', data: "Chia động từ..." }
-                        ];
+                        try {
+                            const { data: randLessons } = await supabase.from('lessons').select('content, type, correct_answer').in('type', ['vocabulary', 'grammar']).limit(20);
+                            let fallbackQuestions: any[] = [];
+                            (randLessons || []).forEach(l => {
+                                const content = typeof l.content === 'string' ? JSON.parse(l.content) : l.content;
+                                fallbackQuestions.push({ 
+                                    type: l.type, 
+                                    data: content.question || content.word || content.structure || "Câu hỏi lỗi", 
+                                    content,
+                                    correct_answer: l.correct_answer || content.correctAnswer || "A" 
+                                });
+                            });
+                            questions = fallbackQuestions.sort(() => 0.5 - Math.random()).slice(0, 10);
+                            
+                            if (questions.length === 0) throw new Error("Fallback DB empty");
+                        } catch (e) {
+                            questions = [
+                                { type: 'vocab', data: "Tìm từ nối...", content: { options: ["A", "B", "C", "D"] }, correct_answer: "A" },
+                                { type: 'grammar', data: "Điền vào...", content: { options: ["A", "B", "C", "D"] }, correct_answer: "B" },
+                                { type: 'vocab', data: "Dịch câu...", content: { options: ["A", "B", "C", "D"] }, correct_answer: "C" },
+                                { type: 'vocab', data: "Từ đồng nghĩa...", content: { options: ["A", "B", "C", "D"] }, correct_answer: "D" },
+                                { type: 'grammar', data: "Chia động từ...", content: { options: ["A", "B", "C", "D"] }, correct_answer: "A" }
+                            ];
+                        }
                     }
                     questions = questions.sort(() => 0.5 - Math.random()).slice(0, 10);
 
@@ -202,7 +233,7 @@ export const setupCommunitySocket = (io: Server) => {
 
             roomNode.scores[payload.user_id] = {
                 points: payload.total_points,
-                completionTime: payload.timestamp - roomNode.startTime,
+                completionTime: Date.now() - roomNode.startTime,
                 finished: true
             };
 
@@ -226,12 +257,24 @@ export const setupCommunitySocket = (io: Server) => {
 
                 try {
                     if (winnerId) {
-                        // Reward winner (2x Wager)
-                        const { data: profile } = await supabase.from('profiles').select('sao_vang, win_count').eq('id', winnerId).single();
-                        if (profile) {
-                            const sao = Number(profile.sao_vang ?? 0) + (roomNode.wager * 2);
-                            const wins = Number(profile.win_count ?? 0) + 1;
-                            await supabase.from('profiles').update({ sao_vang: sao, win_count: wins }).eq('id', winnerId);
+                        try {
+                            const { data: profile } = await supabase.from('profiles').select('sao_vang, win_count').eq('id', winnerId).single();
+                            if (profile) {
+                                const sao = Number(profile.sao_vang ?? 0) + (Number(roomNode.wager) * 2);
+                                const updatePayload: any = { sao_vang: sao };
+                                if (profile.win_count !== undefined) {
+                                    updatePayload.win_count = Number(profile.win_count ?? 0) + 1;
+                                }
+                                await supabase.from('profiles').update(updatePayload).eq('id', winnerId);
+                            }
+                        } catch (dbError) {
+                            try {
+                                const { data: pSafe } = await supabase.from('profiles').select('sao_vang').eq('id', winnerId).single();
+                                if (pSafe) {
+                                    const sao = Number(pSafe.sao_vang ?? 0) + (Number(roomNode.wager) * 2);
+                                    await supabase.from('profiles').update({ sao_vang: sao }).eq('id', winnerId);
+                                }
+                            } catch (e2) {}
                         }
                         if (roomNode.matchId) {
                             await supabase.from('matches').update({ status: 'finished', winner_id: winnerId, finished_at: new Date().toISOString() }).eq('id', roomNode.matchId);
@@ -240,7 +283,7 @@ export const setupCommunitySocket = (io: Server) => {
                         // Draw: refund to both
                         const { data: users } = await supabase.from('profiles').select('id, sao_vang').in('id', [userA, userB]);
                         for (const u of (users || [])) {
-                            await supabase.from('profiles').update({ sao_vang: Number(u.sao_vang || 0) + roomNode.wager }).eq('id', u.id);
+                            await supabase.from('profiles').update({ sao_vang: Number(u.sao_vang || 0) + Number(roomNode.wager) }).eq('id', u.id);
                         }
                         if (roomNode.matchId) {
                             await supabase.from('matches').update({ status: 'finished', finished_at: new Date().toISOString() }).eq('id', roomNode.matchId);
